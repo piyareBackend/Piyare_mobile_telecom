@@ -60,15 +60,13 @@ public class MainActivity extends Activity {
         setContentView(root);
         save.setOnClickListener(v -> startBridge());
 
-        if (getIntent().getBooleanExtra("autoStart", false) && hasCredentials()) {
-            startBridge();
-        }
+        if (getIntent().getBooleanExtra("autoStart", false) && hasCredentials()) startBridge();
     }
 
     private boolean hasCredentials() {
         try {
-            return !prefs.getString("username", "").trim().isEmpty()
-                    && !SecureStore.getPassword(this).isEmpty();
+            String u = prefs.getString("username", "").trim();
+            return !u.isEmpty() && !SecureStore.getPassword(this).isEmpty();
         } catch (Exception e) {
             return false;
         }
@@ -85,12 +83,9 @@ public class MainActivity extends Activity {
             String oldUser = prefs.getString("username", "").trim();
             boolean accountChanged = !oldUser.equalsIgnoreCase(u);
             SecureStore.putPassword(this, p);
-            SecureStore.clearSecrets(this);
-            // clearSecrets above intentionally removes all encrypted values; restore only password below.
-            SecureStore.putPassword(this, p);
             prefs.edit().putString("username", u).remove("token").apply();
+            SecureStore.clearTokenOnly(this);
             if (accountChanged) resetEventState();
-            else resetEventState();
         } catch (Exception e) {
             status.setText("Could not securely save the bridge credentials on this device.");
             return;
@@ -112,10 +107,6 @@ public class MainActivity extends Activity {
                     || key.startsWith("repair_state:") || key.startsWith("repair_sent:")) e.remove(key);
         }
         e.apply();
-        SecureStore.clearSecrets(this);
-        try {
-            SecureStore.putPassword(this, password.getText().toString());
-        } catch (Exception ignored) {}
     }
 
     private void requestNotificationsIfNeeded() {
