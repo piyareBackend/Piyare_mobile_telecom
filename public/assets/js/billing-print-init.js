@@ -2,7 +2,9 @@
 (function(){'use strict';
   if(!/\/admin\/billing\.html$/.test(location.pathname))return;
   const load=(src)=>new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});
+  function addBrandingShortcut(){const top=document.querySelector('.admin-top .actions');if(!top||document.getElementById('billing-branding-link'))return;const a=document.createElement('a');a.id='billing-branding-link';a.className='btn';a.href='../../admin/settings.html#billing-branding';a.textContent='Billing Branding';top.appendChild(a);}
   load('../assets/js/billing-print.js').then(function(){
+    addBrandingShortcut();
     if(typeof window.pmtPost!=='function'||!window.PMTBillingPrint)return;
     const originalPost=window.pmtPost;
     let lastBill=null, lastPayload=null, previewOpened=false;
