@@ -1,20 +1,11 @@
-/* Loads the billing output layer without touching billing transaction logic. */
+/* PMT billing print bootstrap. Never override window.print(). */
 (function(){'use strict';
   if(!/\/admin\/billing\.html$/.test(location.pathname))return;
-  const load=(src)=>new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});
-  function addBrandingShortcut(){const top=document.querySelector('.admin-top .actions');if(!top||document.getElementById('billing-branding-link'))return;const a=document.createElement('a');a.id='billing-branding-link';a.className='btn';a.href='billing-branding.html';a.textContent='Billing Branding';top.appendChild(a);}
-  load('../assets/js/billing-print.js').then(function(){
-    addBrandingShortcut();
-    if(typeof window.pmtPost!=='function'||!window.PMTBillingPrint)return;
-    const originalPost=window.pmtPost;
-    let lastBill=null, lastPayload=null, previewOpened=false;
-    window.pmtPost=async function(payload){const result=await originalPost(payload);lastBill=result;lastPayload=payload;previewOpened=false;return result;};
-    const nativePrint=window.print.bind(window);
-    window.print=function(){
-      if(!lastBill||!lastPayload||previewOpened){if(previewOpened)return nativePrint();return nativePrint();}
-      previewOpened=true;
-      const p=lastPayload;
-      window.PMTBillingPrint.show(lastBill,{type:'a4',customer:p.name,phone:p.phone,discount:p.discount,gstRate:p.gstRate,payment:p.payment,items:p.items});
-    };
-  }).catch(function(err){console.error('PMT billing print layer failed to load',err);});
+  if(window.PMTBillingPrint)return;
+  if(document.querySelector('script[data-pmt-billing-print]'))return;
+  const s=document.createElement('script');
+  s.src='../assets/js/billing-print.js';
+  s.async=false;
+  s.dataset.pmtBillingPrint='1';
+  document.head.appendChild(s);
 })();
