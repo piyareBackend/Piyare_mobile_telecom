@@ -11,6 +11,9 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SmsBridgeService extends Service {
     private static final String API = "https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/api";
@@ -105,7 +108,6 @@ public class SmsBridgeService extends Service {
     private String loadToken() throws Exception {
         String token = SecureStore.getToken(this);
         if (!token.isEmpty()) return token;
-        // One-time migration from the old plaintext bridge preference.
         String legacy = prefs.getString("token", "");
         if (!legacy.isEmpty()) {
             SecureStore.putToken(this, legacy);
@@ -118,7 +120,6 @@ public class SmsBridgeService extends Service {
     private String loadPassword() throws Exception {
         String password = SecureStore.getPassword(this);
         if (!password.isEmpty()) return password;
-        // One-time migration from v2.0. The plaintext value is removed immediately.
         String legacy = prefs.getString("password", "");
         if (!legacy.isEmpty()) {
             SecureStore.putPassword(this, legacy);
@@ -214,14 +215,7 @@ public class SmsBridgeService extends Service {
                     || "Shipped".equalsIgnoreCase(status)
                     || "Delivered".equalsIgnoreCase(status)
                     || "Completed".equalsIgnoreCase(status);
-            // If the bridge was offline while Confirmed -> Processing/Shipped happened,
-            // the customer still needs the one confirmation message. A single event key
-            // prevents duplicates on later status changes.
-            boolean shouldSend = pos
-                    ? !alreadySent
-                    : activeOrder && !alreadySent
-                        && !"Rejected".equalsIgnoreCase(status)
-                        && !"Cancelled".equalsIgnoreCase(status);
+            boolean shouldSend = pos ? !alreadySent : activeOrder && !alreadySent;
             if (!shouldSend) {
                 edit.putString(stateKey, status);
                 continue;
@@ -233,8 +227,6 @@ public class SmsBridgeService extends Service {
                     ? "Piyare Mobile Telecom: Bill " + id + " generated for " + name + ". Total ₹" + money(total) + ". Thank you."
                     : "Piyare Mobile Telecom: Order " + id + " is confirmed. Total ₹" + money(total) + ". Thank you, " + name + ".";
 
-            // Do not advance the event state when the handset/carrier rejected dispatch.
-            // The unchanged state makes the next poll retry automatically.
             if (send(phone, msg)) {
                 edit.putBoolean(eventKey, true);
                 edit.putString(stateKey, status);
@@ -266,9 +258,7 @@ public class SmsBridgeService extends Service {
             }
             if (status.equalsIgnoreCase(previous)
                     || "Pending".equalsIgnoreCase(status)
-                    || "Cancelled".equalsIgnoreCase(status)) {
-                continue;
-            }
+                    || "Cancelled".equalsIgnoreCase(status)) continue;
 
             String eventKey = "repair_sent:" + id + ":" + status;
             if (prefs.getBoolean(eventKey, false)) {
@@ -284,7 +274,6 @@ public class SmsBridgeService extends Service {
                 edit.putBoolean(eventKey, true);
                 edit.putString(key, status);
             }
-            // On failure the previous status remains, so this event is retried.
         }
         edit.apply();
     }
@@ -294,13 +283,41 @@ public class SmsBridgeService extends Service {
             String p = phone.replaceAll("\\D", "");
             if (p.length() == 10) p = "+91" + p;
             if (p.length() < 12) return false;
-            if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) return false;
-            SmsManager sms = SmsManager.getDefault();
-            ArrayList<String> parts = sms.divideMessage(message);
-            if (parts.size() <= 1) sms.sendTextMessage(p, null, message, null, null);
-            else sms.sendMultipartTextMessage(p, null, parts, null, null);
-            return true;
+            if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                setStatus("SMS permission is required");
+                return false;
+            }
+
+            final SmsManager sms = SmsManager.getDefault();
+            final ArrayList<String> parts = sms.divideMessage(message);
+            final String action = getPackageName() + ".SMS_SENT_" + UUID.randomUUID();
+            final CountDownLatch latch = new CountDownLatch(1);
+            final AtomicBoolean sent = new AtomicBoolean(false);
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                    sent.set(getResultCode() == Activity.RESULT_OK);
+                    latch.countDown();
+                }
+            };
+            IntentFilter filter = new IntentFilter(action);
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(receiver, filter);
+
+            PendingIntent sentIntent = PendingIntent.getBroadcast(this, new Random().nextInt(Integer.MAX_VALUE),
+                    new Intent(action).setPackage(getPackageName()),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            ArrayList<PendingIntent> sentIntents = new ArrayList<>();
+            for (int i = 0; i < parts.size(); i++) sentIntents.add(sentIntent);
+
+            if (parts.size() <= 1) sms.sendTextMessage(p, null, message, sentIntent, null);
+            else sms.sendMultipartTextMessage(p, null, parts, sentIntents, null);
+
+            boolean result = latch.await(12, TimeUnit.SECONDS) && sent.get();
+            try { unregisterReceiver(receiver); } catch (Exception ignored) {}
+            if (!result) setStatus("SMS dispatch failed — retrying automatically");
+            return result;
         } catch (Exception e) {
+            setStatus("SMS unavailable — retrying automatically");
             return false;
         }
     }
