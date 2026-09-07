@@ -1,27 +1,18 @@
 /* PMT public configuration. Cloudflare Worker is the only browser API surface. */
 (function(){
   var WORKER_API='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/api';
-  var isAdmin=/\/admin\//.test(location.pathname);
-  var isLogin=/\/admin\/login(?:\.html)?$/i.test(location.pathname);
-  var isStaffAccess=/\/admin\/staff-access(?:\.html)?$/i.test(location.pathname);
-  var isBilling=/\/admin\/(billing|pos)\.html$/i.test(location.pathname);
+  var path=String(location.pathname||'');
+  var isAdmin=/\/admin\//.test(path);
+  var isLogin=/\/admin\/login(?:\.html)?$/i.test(path);
+  var isStaffAccess=/\/admin\/staff-access(?:\.html)?$/i.test(path);
+  var isBilling=/\/admin\/(billing|pos)\.html$/i.test(path);
+  var isStorefront=!isAdmin;
   window.PMT_PUBLIC_API_URL=WORKER_API;
   window.PMT_OWNER_WHATSAPP='';
 
   function registerPWA(){
     if(isLogin||!('serviceWorker' in navigator))return;
     navigator.serviceWorker.register('/admin/sw.js?v=8',{scope:'/admin/'}).catch(function(){});
-  }
-  function installRealtimeAdminGet(){
-    if(!isAdmin||isLogin||window.__PMT_REALTIME_GET)return;
-    if(typeof window.pmtGet!=='function')return setTimeout(installRealtimeAdminGet,50);
-    var original=window.pmtGet;
-    window.pmtGet=async function(action,params){
-      var adminActions=['dashboard','analytics','homepage','products','orders','repairs','coupons','reviews','notifications','lowStock','users','feedback','activity','customers','inventory','monthlyReport','orderDetail','customerDetail'];
-      if(adminActions.indexOf(action)>=0)params=Object.assign({},params||{},{_fresh:String(Date.now())});
-      return original(action,params);
-    };
-    window.__PMT_REALTIME_GET=true;
   }
   function installOffline(){
     if(!isAdmin||isLogin||window.__PMT_OFFLINE_LOADER||window.PMT_OFFLINE)return;
@@ -47,6 +38,14 @@
     var s=document.createElement('script');s.src='/assets/js/billing-print-init.js?v=8';s.async=false;
     s.onerror=function(){window.__PMT_BILLING_PRINT_LOADER=false};document.head.appendChild(s);
   }
+  function installStorefront(){
+    if(!isStorefront||window.__PMT_STOREFRONT_LOADER)return;
+    var p=path.toLowerCase();
+    if(!/\/index\.html?$|\/shop\.html?$|\/product\.html?$/.test(p)&&p!=='/'&&!p.endsWith('/'))return;
+    window.__PMT_STOREFRONT_LOADER=true;
+    var s=document.createElement('script');s.src='/assets/js/storefront-enhancer.js?v=1';s.async=false;
+    s.onerror=function(){window.__PMT_STOREFRONT_LOADER=false};document.head.appendChild(s);
+  }
   function syncPhone(data){
     var s=data&&data.site||{};var phone=String(s.whatsapp||window.PMT_OWNER_WHATSAPP||'').replace(/\D/g,'');
     if(phone)window.PMT_OWNER_WHATSAPP=phone;if(!phone)return;
@@ -63,13 +62,12 @@
     if(isLogin)return;
     registerPWA();
     installBillingPrint();
+    installStorefront();
     contact();
-    installRealtimeAdminGet();
     installAccessControl();
     installStaffPermissionUI();
-    setTimeout(installOffline,0);
+    if(isAdmin)setTimeout(installOffline,0);
   }
-
   if(!isLogin){installAccessControl();installStaffPermissionUI();installBillingPrint();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   if(!isLogin){window.addEventListener('pmt-content-updated',contact);window.PMT_SYNC_CONTACT_NUMBER=syncPhone;}
