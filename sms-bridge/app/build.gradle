@@ -6,10 +6,8 @@ android {
     defaultConfig {
         applicationId 'com.piyare.mobiletelecom.smsbridge'
         minSdk 26
-        // Keep the bridge on target 34 for the dedicated shop-device APK.
-        // Android 15 applies a 6-hour/24-hour dataSync FGS limit to target 35+ apps.
         targetSdk 34
-        versionCode 5
-        versionName '2.3'
+        versionCode 6
+        versionName '2.4'
     }
 }
