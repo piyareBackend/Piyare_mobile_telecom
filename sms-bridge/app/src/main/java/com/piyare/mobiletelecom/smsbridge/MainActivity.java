@@ -4,7 +4,9 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -17,6 +19,7 @@ public class MainActivity extends Activity {
     private android.content.SharedPreferences prefs;
     private EditText username, password;
     private TextView status;
+    private Button save;
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -32,7 +35,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView info = new TextView(this);
-        info.setText("Dedicated shop sender: enter a PMT staff account that can view orders and repairs. The password is stored in Android Keystore-protected storage; it is not kept as plaintext. SMS are sent automatically from this phone's SIM.");
+        info.setText("Dedicated shop sender: sign in with a PMT staff account that can view orders and repairs. Credentials are stored with Android Keystore protection. SMS are sent automatically from this phone's SIM.");
         info.setPadding(0, 20, 0, 20);
         root.addView(info);
 
@@ -48,19 +51,30 @@ public class MainActivity extends Activity {
         password.setInputType(0x81);
         root.addView(password, new LinearLayout.LayoutParams(-1, -2));
 
-        Button save = new Button(this);
+        save = new Button(this);
         save.setText("Save & Start");
         root.addView(save, new LinearLayout.LayoutParams(-1, -2));
 
+        Button permission = new Button(this);
+        permission.setText("Grant SMS Permission");
+        permission.setOnClickListener(v -> requestSmsPermission());
+        root.addView(permission, new LinearLayout.LayoutParams(-1, -2));
+
+        Button settings = new Button(this);
+        settings.setText("Open App Settings");
+        settings.setOnClickListener(v -> openAppSettings());
+        root.addView(settings, new LinearLayout.LayoutParams(-1, -2));
+
         status = new TextView(this);
         status.setPadding(0, 20, 0, 0);
-        status.setText("Not running");
         root.addView(status, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
         save.setOnClickListener(v -> startBridge());
+        updatePermissionStatus();
 
-        if (getIntent().getBooleanExtra("autoStart", false) && hasCredentials()) startBridge();
+        if (getIntent().getBooleanExtra("autoStart", false) && hasCredentials()
+                && checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) startBridgeService();
     }
 
     private boolean hasCredentials() {
@@ -75,10 +89,19 @@ public class MainActivity extends Activity {
     private void startBridge() {
         String u = username.getText().toString().trim();
         String p = password.getText().toString();
-        if (u.isEmpty() || p.length() < 10) {
-            status.setText("Enter valid PMT bridge credentials (password must be 10+ characters).");
+        if (u.isEmpty() || p.isEmpty()) {
+            status.setText("Enter your PMT username and password.");
             return;
         }
+        if (checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            status.setText("SMS permission is required. Tap Grant SMS Permission, then tap Save & Start again.");
+            requestSmsPermission();
+            return;
+        }
+        saveCredentialsAndStart(u, p);
+    }
+
+    private void saveCredentialsAndStart(String u, String p) {
         try {
             String oldUser = prefs.getString("username", "").trim();
             boolean accountChanged = !oldUser.equalsIgnoreCase(u);
@@ -87,17 +110,33 @@ public class MainActivity extends Activity {
             SecureStore.clearTokenOnly(this);
             if (accountChanged) resetEventState();
         } catch (Exception e) {
-            status.setText("Could not securely save the bridge credentials on this device.");
-            return;
-        }
-
-        if (checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.SEND_SMS}, SMS_PERMISSION);
-            status.setText("Allow SMS permission, then the bridge will start.");
+            status.setText("Secure storage failed. Tap Open App Settings, clear PMT SMS Bridge storage, reopen it and try again.");
             return;
         }
         requestNotificationsIfNeeded();
         startBridgeService();
+    }
+
+    private void requestSmsPermission() {
+        if (checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+            status.setText("SMS permission is already allowed. Tap Save & Start.");
+            return;
+        }
+        requestPermissions(new String[]{Manifest.permission.SEND_SMS}, SMS_PERMISSION);
+    }
+
+    private void updatePermissionStatus() {
+        if (checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+            status.setText("SMS permission: Allowed. Enter credentials and tap Save & Start.");
+        } else {
+            status.setText("SMS permission: Not allowed. Tap Grant SMS Permission.");
+        }
+    }
+
+    private void openAppSettings() {
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        i.setData(Uri.parse("package:" + getPackageName()));
+        startActivity(i);
     }
 
     private void resetEventState() {
@@ -120,18 +159,22 @@ public class MainActivity extends Activity {
         Intent i = new Intent(this, SmsBridgeService.class);
         if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(i);
         else startService(i);
-        status.setText("Bridge running — automatic SMS and retry are enabled.");
+        status.setText("Bridge started. It will authenticate and process automatic SMS in the background.");
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == SMS_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                requestNotificationsIfNeeded();
-                startBridgeService();
+                status.setText("SMS permission allowed. Tap Save & Start to securely save credentials and start the bridge.");
             } else {
-                status.setText("SMS permission is required for automatic customer messages.");
+                status.setText("SMS permission was not granted. Use Open App Settings if Android no longer shows the permission dialog.");
             }
         }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (status != null) updatePermissionStatus();
     }
 }
