@@ -1,6 +1,7 @@
 /**
- * Piyare Mobile Telecom — Staff access control, identity and audit layer.
- * Keep this file after the consolidated router so these access-control routes remain active.
+ * PMT staff identity, permissions and audit helpers.
+ * IMPORTANT: routing lives only in backend/Code.gs.
+ * This file intentionally contains NO doGet/doPost functions.
  */
 const PMT_PERMISSION_CATALOG={
   dashboard:'Dashboard',pos:'POS',billing:'Billing',website:'Website Editor',banners:'Banners',
@@ -22,7 +23,6 @@ const PMT_ACTION_PERMISSIONS={
 function pmtAccessEnsureSchema_(){
   const s=S('Users');if(!s)throw Error('Users sheet missing');
   const col=Math.max(10,s.getLastColumn());
-  if(s.getLastColumn()<col)s.insertColumnsAfter(s.getLastColumn()||1,col-s.getLastColumn());
   const h=s.getRange(1,1,1,col).getValues()[0];
   if(!h[8])h[8]='permissions';
   if(!h[9])h[9]='avatarUrl';
@@ -59,8 +59,7 @@ function pmtUsers_(){
 function pmtUpdateStaffPermissions_(p,session){
   if(!session||String(session.role)!=='Owner')return forbidden_();
   const found=pmtUserById_(clean_(p&&p.id,120));if(!found)return J({ok:false,message:'User not found'});
-  const targetRole=String(found.data[5]||'Support');
-  if(targetRole==='Owner')return J({ok:false,message:'Owner permissions are always full access'});
+  if(String(found.data[5]||'Support')==='Owner')return J({ok:false,message:'Owner permissions are always full access'});
   let requested=Array.isArray(p&&p.permissions)?p.permissions.map(String):[];
   const catalog=Object.keys(PMT_PERMISSION_CATALOG);
   requested=requested.filter((x,i,a)=>catalog.indexOf(x)>=0&&a.indexOf(x)===i);
@@ -98,7 +97,7 @@ function pmtLogin_(username,password){
   if(attempts>=CFG.MAX_LOGIN_ATTEMPTS)return J({ok:false,message:'Too many attempts. Try again later.'});
   const s=pmtAccessEnsureSchema_(),r=s.getDataRange().getValues();let user=null,row=0;
   for(let i=1;i<r.length;i++)if(String(r[i][1]).toLowerCase()===username.toLowerCase()){user=r[i];row=i+1;break;}
-  if(!user||String(user[6]||'Active')!=='Active'||hash_(password,user[2])!==String(user[3])){cache.put(key,String(attempts+1),CFG.LOGIN_WINDOW_SECONDS);return J({ok:false,message:'Invalid credentials'});}
+  if(!user||String(user[6]||'Active')!=='Active'||hash_(password,user[2],user[2])!==String(user[3])){cache.put(key,String(attempts+1),CFG.LOGIN_WINDOW_SECONDS);return J({ok:false,message:'Invalid credentials'});}
   cache.remove(key);const t=token_(),permissions=pmtPermissionsForUserRow_(user),avatarUrl=String(user[9]||'');
   const session={userId:String(user[0]),username:String(user[1]),name:String(user[4]),role:String(user[5]),permissions,row};
   cache.put('session_'+t,JSON.stringify(session),CFG.SESSION_SECONDS);
@@ -115,72 +114,4 @@ function pmtStaffActivity_(p,session){
   const s=S('StaffActivity');if(!s)return J({ok:true,data:[]});
   const r=s.getDataRange().getValues();const rows=r.length>1?r.slice(1).reverse().slice(0,200).map(x=>({timestamp:String(x[0]||''),userId:String(x[1]||''),username:String(x[2]||''),name:String(x[3]||''),role:String(x[4]||''),action:String(x[5]||''),detail:String(x[6]||'')})):[];
   return J({ok:true,data:rows});
-}
-function doGet(e){
-  const a=clean_(e&&e.parameter?e.parameter.action:'',60),p=e&&e.parameter?e.parameter:{};
-  try{
-    if(a==='acceptOrder')return processOrderAction_(p,'accept');
-    if(a==='rejectOrder')return processOrderAction_(p,'reject');
-    if(a==='content')return content_();
-    if(a==='track')return track_(clean_(p.ticket,40));
-    if(a==='publicProducts')return publicProducts_();
-    if(a==='publicCoupons')return publicCoupons_();
-    const session=auth_(clean_(p.token,160));
-    if(!session)return forbidden_();
-    if(a==='myPermissions')return pmtMyPermissions_(session);
-    if(a==='dashboard'&&pmtAccessAllowed_(session,a))return dashboard_();
-    if(a==='monthlyReport'&&pmtAccessAllowed_(session,a))return monthlyReport_(p.month);
-    if((a==='inventory'||a==='lowStock')&&pmtAccessAllowed_(session,a))return inventory_();
-    if(a==='orderDetail'&&pmtAccessAllowed_(session,a))return orderDetail_(clean_(p.id,120));
-    if(a==='customerDetail'&&pmtAccessAllowed_(session,a))return customerDetail_(clean_(p.id,120));
-    if(!pmtAccessAllowed_(session,a))return pmtAccessDenied_();
-    if(a==='products')return adminProducts_();
-    if(a==='orders')return ordersAdmin_();
-    if(a==='customers')return customers_();
-    if(a==='homepage')return J({ok:true,data:moduleData_('HomepageBlocks',x=>({id:String(x[0]),type:String(x[1]),title:String(x[2]),enabled:x[3]!==false,position:Number(x[4]||0)})).sort((a,b)=>a.position-b.position)});
-    if(a==='repairs')return J({ok:true,data:moduleData_('Repairs',x=>({id:String(x[0]),date:String(x[1]),name:String(x[2]),phoneMasked:maskPhone_(String(x[3]||'')),phone:String(x[3]||''),device:String(x[4]),issue:String(x[5]),notes:String(x[6]),status:String(x[7]||'Pending'),estimate:Number(x[8]||0)}))});
-    if(a==='analytics')return analytics_();
-    if(a==='coupons')return coupons_();
-    if(a==='reviews')return reviews_();
-    if(a==='notifications')return notifications_();
-    if(a==='users')return pmtUsers_();
-    if(a==='feedback')return feedback_();
-    if(a==='activity')return activity_();
-    if(a==='staffActivity')return pmtStaffActivity_(p,session);
-    return J({ok:true,service:'PMT Owner API',version:'7.1-staff-audit'});
-  }catch(err){auditSafe_('get_error',String(err&&err.message||err));return J({ok:false,error:String(err&&err.message||err),message:'Server error'});}
-}
-function doPost(e){
-  let b={};try{b=JSON.parse((e.postData&&e.postData.contents)||'{}');}catch(err){return J({ok:false,error:'Invalid request',code:'INVALID_JSON'});}
-  const a=clean_(b.action,60);
-  try{
-    if(a==='adminLogin')return pmtLogin_(clean_(b.username,80),String(b.password||''));
-    if(a==='createRepair')return createRepair_(b.payload||{});
-    if(a==='createFeedback')return createFeedback_(b.payload||{});
-    if(a==='createOrder')return createOrder_(b.payload||{});
-    if(a==='analyticsEvent'){analyticsEvent_(b);return J({ok:true,data:{}});}
-    const session=auth_(b.token);if(!session)return J({ok:false,error:'Unauthorized',code:'UNAUTHORIZED'});
-    if(a==='logout'){pmtLogStaffActivity_(session,'logout','Admin portal logout');return logout_(b.token);}
-    if(a==='staffActivity'){pmtLogStaffActivity_(session,'staff_activity_note',clean_(b.payload&&b.payload.detail,500));return J({ok:true});}
-    if(!pmtAccessAllowed_(session,a))return pmtAccessDenied_();
-    if(a==='saveContent'){const out=saveContent_(b.content||{},session);pmtLogStaffActivity_(session,'content_update','Website content');return out;}
-    if(a==='updateHomepage'){const out=updateHomepageBlock_(b.payload||{},session);pmtLogStaffActivity_(session,'homepage_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='uploadImage'){const out=uploadImage_(b,session);pmtLogStaffActivity_(session,'media_upload','Media upload');return out;}
-    if(a==='createBackup'){const out=backupCreate_(session);pmtLogStaffActivity_(session,'backup_create','Backup created');return out;}
-    if(a==='restoreBackup'){const out=restoreBackup_(clean_(b.snapshotId,120),session);pmtLogStaffActivity_(session,'backup_restore',String(b.snapshotId||''));return out;}
-    if(a==='createUser'){const out=pmtCreateUser_(b.payload||{},session);return out;}
-    if(a==='updateUser'){const out=updateUser_(b.payload||{},session);pmtLogStaffActivity_(session,'user_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='updateStaffPermissions'){return pmtUpdateStaffPermissions_(b.payload||{},session);}
-    if(a==='updateStaffProfile'){return pmtUpdateStaffProfile_(b.payload||{},session);}
-    if(a==='createProduct'){const out=createProduct_(b.payload||{},session);pmtLogStaffActivity_(session,'product_create',String(b.payload&&b.payload.name||''));return out;}
-    if(a==='updateProduct'){const out=updateProduct_(b.payload||{},session);pmtLogStaffActivity_(session,'product_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='deleteProduct'){const out=deleteProduct_(b.payload||{},session);pmtLogStaffActivity_(session,'product_delete',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='createCoupon'){const out=createCoupon_(b.payload||{},session);pmtLogStaffActivity_(session,'coupon_create',String(b.payload&&b.payload.code||''));return out;}
-    if(a==='updateCoupon'){const out=updateCoupon_(b.payload||{},session);pmtLogStaffActivity_(session,'coupon_update',String(b.payload&&b.payload.code||''));return out;}
-    if(a==='updateOrder'){const out=updateOrder_(b.payload||{},session);pmtLogStaffActivity_(session,'order_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='updateRepair'){const out=updateRepair_(b.payload||{},session);pmtLogStaffActivity_(session,'repair_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='updateReview'){const out=updateReview_(b.payload||{},session);pmtLogStaffActivity_(session,'review_update',String(b.payload&&b.payload.id||''));return out;}
-    if(a==='createPosBill'){const out=createPosBill_(b.payload||{},session);pmtLogStaffActivity_(session,'billing_create',String(b.payload&&b.payload.billType||'SALE'));return out;}
-    return J({ok:false,error:'Unknown action',code:'UNKNOWN_ACTION'});
-  }catch(err){auditSafe_('post_error',String(err&&err.message||err));return J({ok:false,error:String(err&&err.message||err),message:'Server error'});}
 }
