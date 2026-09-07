@@ -41,7 +41,7 @@
   function installAdminNotifications(){
     if(!isAdmin||isLogin||window.__PMT_ADMIN_NOTIFICATION_LOADER)return;
     window.__PMT_ADMIN_NOTIFICATION_LOADER=true;
-    var s=document.createElement('script');s.src='/assets/js/admin-notification-center.js?v=1';s.async=false;
+    var s=document.createElement('script');s.src='/assets/js/admin-notification-center.js?v=2';s.async=false;
     s.onerror=function(){window.__PMT_ADMIN_NOTIFICATION_LOADER=false};document.head.appendChild(s);
   }
   function installStorefront(){
