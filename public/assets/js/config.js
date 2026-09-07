@@ -35,8 +35,14 @@
   function installBillingPrint(){
     if(!isBilling||window.__PMT_BILLING_PRINT_LOADER)return;
     window.__PMT_BILLING_PRINT_LOADER=true;
-    var s=document.createElement('script');s.src='/assets/js/billing-print-init.js?v=8';s.async=false;
+    var s=document.createElement('script');s.src='/assets/js/billing-print-init.js?v=9';s.async=false;
     s.onerror=function(){window.__PMT_BILLING_PRINT_LOADER=false};document.head.appendChild(s);
+  }
+  function installAdminNotifications(){
+    if(!isAdmin||isLogin||window.__PMT_ADMIN_NOTIFICATION_LOADER)return;
+    window.__PMT_ADMIN_NOTIFICATION_LOADER=true;
+    var s=document.createElement('script');s.src='/assets/js/admin-notification-center.js?v=1';s.async=false;
+    s.onerror=function(){window.__PMT_ADMIN_NOTIFICATION_LOADER=false};document.head.appendChild(s);
   }
   function installStorefront(){
     if(!isStorefront||window.__PMT_STOREFRONT_LOADER)return;
@@ -66,9 +72,10 @@
     contact();
     installAccessControl();
     installStaffPermissionUI();
+    installAdminNotifications();
     if(isAdmin)setTimeout(installOffline,0);
   }
-  if(!isLogin){installAccessControl();installStaffPermissionUI();installBillingPrint();}
+  if(!isLogin){installAccessControl();installStaffPermissionUI();installBillingPrint();installAdminNotifications();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
   if(!isLogin){window.addEventListener('pmt-content-updated',contact);window.PMT_SYNC_CONTACT_NUMBER=syncPhone;}
 })();
