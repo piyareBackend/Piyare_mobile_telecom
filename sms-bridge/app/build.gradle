@@ -9,7 +9,7 @@ android {
         // Keep the bridge on target 34 for the dedicated shop-device APK.
         // Android 15 applies a 6-hour/24-hour dataSync FGS limit to target 35+ apps.
         targetSdk 34
-        versionCode 2
-        versionName '2.0'
+        versionCode 3
+        versionName '2.1'
     }
 }
