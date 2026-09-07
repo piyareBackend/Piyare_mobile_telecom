@@ -22,20 +22,13 @@ final class SecureStore {
 
     private SecureStore() {}
 
-    static void putPassword(Context context, String value) throws Exception {
-        put(context, KEY_PASSWORD, value);
-    }
+    static void putPassword(Context context, String value) throws Exception { put(context, KEY_PASSWORD, value); }
+    static String getPassword(Context context) throws Exception { return get(context, KEY_PASSWORD); }
+    static void putToken(Context context, String value) throws Exception { put(context, KEY_TOKEN, value); }
+    static String getToken(Context context) throws Exception { return get(context, KEY_TOKEN); }
 
-    static String getPassword(Context context) throws Exception {
-        return get(context, KEY_PASSWORD);
-    }
-
-    static void putToken(Context context, String value) throws Exception {
-        put(context, KEY_TOKEN, value);
-    }
-
-    static String getToken(Context context) throws Exception {
-        return get(context, KEY_TOKEN);
+    static void clearTokenOnly(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_TOKEN).apply();
     }
 
     static void clearSecrets(Context context) {
