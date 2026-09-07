@@ -78,7 +78,7 @@ public class SmsBridgeService extends Service {
         if (token.isEmpty()) token = loginAndStoreToken();
         JSONObject d = rawGet(action, token);
         if (isUnauthorized(d)) {
-            SecureStore.clearSecrets(this);
+            SecureStore.clearTokenOnly(this);
             token = loginAndStoreToken();
             d = rawGet(action, token);
         }
@@ -209,11 +209,19 @@ public class SmsBridgeService extends Service {
 
             String eventKey = "order_sent:" + id;
             boolean alreadySent = prefs.getBoolean(eventKey, false);
+            boolean activeOrder = "Confirmed".equalsIgnoreCase(status)
+                    || "Processing".equalsIgnoreCase(status)
+                    || "Shipped".equalsIgnoreCase(status)
+                    || "Delivered".equalsIgnoreCase(status)
+                    || "Completed".equalsIgnoreCase(status);
+            // If the bridge was offline while Confirmed -> Processing/Shipped happened,
+            // the customer still needs the one confirmation message. A single event key
+            // prevents duplicates on later status changes.
             boolean shouldSend = pos
                     ? !alreadySent
-                    : "Confirmed".equalsIgnoreCase(status)
-                        && !"Confirmed".equalsIgnoreCase(previous)
-                        && !alreadySent;
+                    : activeOrder && !alreadySent
+                        && !"Rejected".equalsIgnoreCase(status)
+                        && !"Cancelled".equalsIgnoreCase(status);
             if (!shouldSend) {
                 edit.putString(stateKey, status);
                 continue;
@@ -226,7 +234,7 @@ public class SmsBridgeService extends Service {
                     : "Piyare Mobile Telecom: Order " + id + " is confirmed. Total ₹" + money(total) + ". Thank you, " + name + ".";
 
             // Do not advance the event state when the handset/carrier rejected dispatch.
-            // The unchanged previous state makes the next poll retry automatically.
+            // The unchanged state makes the next poll retry automatically.
             if (send(phone, msg)) {
                 edit.putBoolean(eventKey, true);
                 edit.putString(stateKey, status);
@@ -289,20 +297,15 @@ public class SmsBridgeService extends Service {
             if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) return false;
             SmsManager sms = SmsManager.getDefault();
             ArrayList<String> parts = sms.divideMessage(message);
-            if (parts.size() <= 1) {
-                sms.sendTextMessage(p, null, message, null, null);
-            } else {
-                sms.sendMultipartTextMessage(p, null, parts, null, null);
-            }
+            if (parts.size() <= 1) sms.sendTextMessage(p, null, message, null, null);
+            else sms.sendMultipartTextMessage(p, null, parts, null, null);
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
-    private String money(double n) {
-        return String.format(Locale.US, "%.2f", n);
-    }
+    private String money(double n) { return String.format(Locale.US, "%.2f", n); }
 
     @Override public int onStartCommand(Intent i, int flags, int startId) { return START_STICKY; }
     @Override public android.os.IBinder onBind(Intent i) { return null; }
