@@ -11,7 +11,7 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
-/** Small native Android Keystore wrapper for bridge secrets. */
+/** Native Android Keystore wrapper for bridge secrets with recovery from stale/corrupt keys. */
 final class SecureStore {
     private static final String STORE = "AndroidKeyStore";
     private static final String ALIAS = "pmt_sms_bridge_key_v1";
@@ -53,16 +53,36 @@ final class SecureStore {
         byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
         byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
-        return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+        } catch (Exception badKeyOrCiphertext) {
+            // A package update/device restore can leave an unreadable old Keystore key.
+            // Clear only this bridge's encrypted preferences and recreate the key on next put.
+            clearSecrets(context);
+            deleteKey();
+            return "";
+        }
     }
 
     private static SecretKey getOrCreateKey() throws Exception {
         KeyStore ks = KeyStore.getInstance(STORE);
         ks.load(null);
-        if (ks.containsAlias(ALIAS)) return ((KeyStore.SecretKeyEntry) ks.getEntry(ALIAS, null)).getSecretKey();
+        if (ks.containsAlias(ALIAS)) {
+            KeyStore.Entry entry = ks.getEntry(ALIAS, null);
+            if (entry instanceof KeyStore.SecretKeyEntry) return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+            try { ks.deleteEntry(ALIAS); } catch (Exception ignored) {}
+        }
         KeyGenerator generator = KeyGenerator.getInstance("AES", STORE);
         generator.init(256);
         return generator.generateKey();
+    }
+
+    private static void deleteKey() {
+        try {
+            KeyStore ks = KeyStore.getInstance(STORE);
+            ks.load(null);
+            if (ks.containsAlias(ALIAS)) ks.deleteEntry(ALIAS);
+        } catch (Exception ignored) {}
     }
 }
