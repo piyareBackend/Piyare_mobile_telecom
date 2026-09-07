@@ -63,6 +63,8 @@ public class SmsBridgeService extends Service {
                 pollRepairs(baseline);
                 if (baseline) prefs.edit().putBoolean("baseline_done", true).apply();
                 setStatus("Connected — checking every 15 seconds");
+            } catch (SecurityException e) {
+                setStatus("SMS permission is required");
             } catch (Exception e) {
                 setStatus("Waiting for PMT server; will retry");
             }
@@ -72,16 +74,15 @@ public class SmsBridgeService extends Service {
     }
 
     private JSONObject get(String action) throws Exception {
-        String token = prefs.getString("token", "");
-        if (token.isEmpty()) {
-            token = loginAndStoreToken();
-        }
+        String token = loadToken();
+        if (token.isEmpty()) token = loginAndStoreToken();
         JSONObject d = rawGet(action, token);
         if (isUnauthorized(d)) {
+            SecureStore.clearSecrets(this);
             token = loginAndStoreToken();
             d = rawGet(action, token);
         }
-        if (isUnauthorized(d)) throw new IOException("PMT admin session could not be refreshed");
+        if (isUnauthorized(d)) throw new IOException("PMT bridge account is not authorized");
         return d;
     }
 
@@ -101,9 +102,35 @@ public class SmsBridgeService extends Service {
         catch (Exception e) { throw new IOException("PMT returned invalid JSON (HTTP " + code + ")"); }
     }
 
+    private String loadToken() throws Exception {
+        String token = SecureStore.getToken(this);
+        if (!token.isEmpty()) return token;
+        // One-time migration from the old plaintext bridge preference.
+        String legacy = prefs.getString("token", "");
+        if (!legacy.isEmpty()) {
+            SecureStore.putToken(this, legacy);
+            prefs.edit().remove("token").apply();
+            return legacy;
+        }
+        return "";
+    }
+
+    private String loadPassword() throws Exception {
+        String password = SecureStore.getPassword(this);
+        if (!password.isEmpty()) return password;
+        // One-time migration from v2.0. The plaintext value is removed immediately.
+        String legacy = prefs.getString("password", "");
+        if (!legacy.isEmpty()) {
+            SecureStore.putPassword(this, legacy);
+            prefs.edit().remove("password").apply();
+            return legacy;
+        }
+        return "";
+    }
+
     private String loginAndStoreToken() throws Exception {
         String username = prefs.getString("username", "").trim();
-        String password = prefs.getString("password", "");
+        String password = loadPassword();
         if (username.isEmpty() || password.length() < 10) throw new IOException("Bridge credentials are not configured");
         JSONObject request = new JSONObject();
         request.put("action", "adminLogin");
@@ -114,7 +141,7 @@ public class SmsBridgeService extends Service {
         if (!d.optBoolean("ok", false) || token.isEmpty()) {
             throw new IOException(d.optString("message", "PMT login failed"));
         }
-        prefs.edit().putString("token", token).apply();
+        SecureStore.putToken(this, token);
         return token;
     }
 
@@ -155,13 +182,13 @@ public class SmsBridgeService extends Service {
         String message = d.optString("message", "");
         return "UNAUTHORIZED".equalsIgnoreCase(code)
                 || "Forbidden".equalsIgnoreCase(error)
-                || "Forbidden".equalsIgnoreCase(message)
-                || !d.optBoolean("ok", false);
+                || "Forbidden".equalsIgnoreCase(message);
     }
 
     private void pollOrders(boolean baseline) throws Exception {
         JSONObject d = get("orders");
         JSONArray a = d.optJSONArray("items");
+        if (a == null) a = d.optJSONArray("data");
         if (a == null) return;
         android.content.SharedPreferences.Editor edit = prefs.edit();
         for (int i = 0; i < a.length(); i++) {
@@ -175,31 +202,35 @@ public class SmsBridgeService extends Service {
             boolean pos = id.startsWith("PMT-POS-");
             String stateKey = "order_state:" + id;
             String previous = prefs.getString(stateKey, "");
-
             if (baseline) {
                 edit.putString(stateKey, status);
                 continue;
             }
 
-            boolean shouldSend = false;
             String eventKey = "order_sent:" + id;
-            if (pos) {
-                shouldSend = !prefs.getBoolean(eventKey, false);
-            } else {
-                shouldSend = "Confirmed".equalsIgnoreCase(status)
+            boolean alreadySent = prefs.getBoolean(eventKey, false);
+            boolean shouldSend = pos
+                    ? !alreadySent
+                    : "Confirmed".equalsIgnoreCase(status)
                         && !"Confirmed".equalsIgnoreCase(previous)
-                        && !prefs.getBoolean(eventKey, false);
+                        && !alreadySent;
+            if (!shouldSend) {
+                edit.putString(stateKey, status);
+                continue;
             }
-
-            edit.putString(stateKey, status);
-            if (!shouldSend) continue;
 
             String name = o.optString("customer", "Customer");
             double total = o.optDouble("total", 0);
             String msg = pos
                     ? "Piyare Mobile Telecom: Bill " + id + " generated for " + name + ". Total ₹" + money(total) + ". Thank you."
                     : "Piyare Mobile Telecom: Order " + id + " is confirmed. Total ₹" + money(total) + ". Thank you, " + name + ".";
-            if (send(phone, msg)) edit.putBoolean(eventKey, true);
+
+            // Do not advance the event state when the handset/carrier rejected dispatch.
+            // The unchanged previous state makes the next poll retry automatically.
+            if (send(phone, msg)) {
+                edit.putBoolean(eventKey, true);
+                edit.putString(stateKey, status);
+            }
         }
         edit.apply();
     }
@@ -240,8 +271,12 @@ public class SmsBridgeService extends Service {
             String msg = "Piyare Mobile Telecom: Hello " + name + ", your repair " + id + " status is " + status + ".";
             if ("Ready".equalsIgnoreCase(status)) msg += " Your device is ready for pickup.";
             if ("Completed".equalsIgnoreCase(status)) msg += " Thank you for choosing us.";
-            if (send(phone, msg)) edit.putBoolean(eventKey, true);
-            edit.putString(key, status);
+
+            if (send(phone, msg)) {
+                edit.putBoolean(eventKey, true);
+                edit.putString(key, status);
+            }
+            // On failure the previous status remains, so this event is retried.
         }
         edit.apply();
     }
@@ -250,8 +285,15 @@ public class SmsBridgeService extends Service {
         try {
             String p = phone.replaceAll("\\D", "");
             if (p.length() == 10) p = "+91" + p;
+            if (p.length() < 12) return false;
             if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) return false;
-            SmsManager.getDefault().sendTextMessage(p, null, message, null, null);
+            SmsManager sms = SmsManager.getDefault();
+            ArrayList<String> parts = sms.divideMessage(message);
+            if (parts.size() <= 1) {
+                sms.sendTextMessage(p, null, message, null, null);
+            } else {
+                sms.sendMultipartTextMessage(p, null, parts, null, null);
+            }
             return true;
         } catch (Exception e) {
             return false;
