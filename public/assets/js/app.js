@@ -33,3 +33,4 @@ window.PMT.api={get:pmtGet,post:pmtPost,fetch:pmtFetch};
 window.PMT.content={getInitial:pmtGetInitialContent,refresh:pmtRefreshContent,load:loadSiteContent,loadFresh:pmtLoadFreshContent};
 window.PMT.media={url:pmtMediaUrl};
 window.PMT.auth={token:()=>sessionStorage.getItem("pmt-admin-token")||"",clear:()=>sessionStorage.removeItem("pmt-admin-token")};
+(function(){if(!/\/admin\/billing\.html$/.test(location.pathname))return;const s=document.createElement('script');s.src='../assets/js/billing-print-init.js';s.async=false;document.head.appendChild(s);})();
