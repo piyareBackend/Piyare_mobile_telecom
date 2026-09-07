@@ -1,43 +1,27 @@
-# Backend Fix — Consolidated Code.gs
+# Piyare Mobile Telecom — Backend Architecture
 
-## What was wrong
-Your Apps Script project had **5 separate files** (Code.gs, Code_v52_patch.gs,
-Code_v52_routes.gs, ZZ_ProductFix.gs, ZZZ_OrderFix.gs), and every one of them
-defined its own `doGet` / `doPost`. In Apps Script, when multiple files define
-the same function, only the LAST one loaded actually runs — the rest are
-silently ignored. This caused:
+## Canonical architecture
+- `backend/Code.gs` is the **only HTTP router** and contains the authoritative `doGet` / `doPost`.
+- `backend/ZZZ_AccessControl.gs` contains staff identity, permissions and audit helpers only. It intentionally contains **no** `doGet` / `doPost`.
+- `backend/ZZ_POSBillingV2.gs` contains the POS stock/idempotency implementation used by the canonical router.
 
-1. **Revenue counted Pending/Rejected orders** — one of the competing dashboard
-   functions summed ALL orders instead of only Confirmed ones.
-2. **In-app Accept/Reject didn't restore stock** — the admin app's "Accept/Reject"
-   buttons called a different, older function (`updateOrder_`) than the WhatsApp
-   link buttons did, and that older function never restored stock or cleared
-   the cache.
-3. **Stale data after changes** — several actions didn't clear the 45-second
-   cache, so the app/website sometimes showed old numbers right after a change.
+This prevents Apps Script file-order/router collisions where a second `doGet` or `doPost` silently changes which API implementation is actually executed.
 
-## The fix
-This single `Code.gs` file replaces all 5 files. Key changes:
-- **One shared function** (`changeOrderStatus_`) now handles both the WhatsApp
-  accept/reject links AND the in-app Accept/Reject/status buttons — so they can
-  never behave differently again.
-- **Revenue** is now calculated the same way everywhere (dashboard, analytics,
-  monthly report) from a single rule: only `Confirmed / Processing / Shipped /
-  Delivered / Completed` orders count. Pending, Rejected, and Cancelled never do.
-- **Stock is restored automatically** whenever an order moves to Rejected or
-  Cancelled — whether that happens from the app or from a WhatsApp link — and
-  never restored twice.
-- **Cache is cleared on every write** (products, orders, coupons, backups) so
-  the dashboard, low-stock count, and order list are always fresh.
+## Business rules
+- Revenue uses only `Confirmed`, `Processing`, `Shipped`, `Delivered`, and `Completed` orders.
+- Pending, Rejected and Cancelled orders do not count as revenue.
+- Rejection/cancellation restores reserved stock once.
+- Website order creation is rate-limited and stock reservation is protected by `LockService`.
+- POS billing uses an idempotency key so retrying the same bill does not deduct stock twice.
+- Staff actions are permission-checked server-side.
+- `orders_edit` controls order status changes; `repairs` / `repairs_edit` control repair operations according to the active permission map.
 
-## How to deploy
-1. Open your Apps Script project (script.google.com) for Piyare Mobile Telecom
-2. **Delete** these files entirely: `Code_v52_patch.gs`, `Code_v52_routes.gs`,
-   `ZZ_HardDelete.gs`, `ZZ_ProductFix.gs`, `ZZZ_OrderFix.gs`
-3. **Replace** the contents of `Code.gs` with this file
-4. Save → Deploy → Manage deployments → Edit → New version → Deploy
-5. Test: place a test order, accept it from the app, reject one from WhatsApp —
-   check that stock updates correctly both ways and revenue only shows
-   Confirmed+ orders
+## SMS bridge architecture
+The free SMS transport remains the dedicated Android sender + shop SIM. The bridge stores its credentials/session material using Android Keystore and retries failed SMS operations. It does not use WhatsApp redirects as the customer SMS transport.
 
-No spreadsheet structure changes needed — same sheets, same columns.
+The server remains the source of truth for orders and repairs; the sender device is a transport worker, not the business database.
+
+## Deployment
+After backend changes, deploy a new Apps Script web-app version from the Apps Script editor and verify the deployed URL used by the website/worker still points to the current deployment.
+
+Use Apps Script Executions to verify errors after deployment.
