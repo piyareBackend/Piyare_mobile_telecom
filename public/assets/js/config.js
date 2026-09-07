@@ -1,13 +1,11 @@
 /* PMT public configuration. Cloudflare Worker is the only browser API surface. */
 (function(){
   var WORKER_API='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/api';
-  var host=String(location.hostname||'').toLowerCase();
-  var isNetlify=/\.netlify\.app$/.test(host);
   var isAdmin=/\/admin\//.test(location.pathname);
   var isLogin=/\/admin\/login(?:\.html)?$/i.test(location.pathname);
   var isStaffAccess=/\/admin\/staff-access(?:\.html)?$/i.test(location.pathname);
   var isBilling=/\/admin\/(billing|pos)\.html$/i.test(location.pathname);
-  window.PMT_PUBLIC_API_URL=isNetlify?WORKER_API:'/api';
+  window.PMT_PUBLIC_API_URL=WORKER_API;
   window.PMT_OWNER_WHATSAPP='';
 
   function registerPWA(){
