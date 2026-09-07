@@ -24,6 +24,7 @@ final class SecureStore {
     static String getToken(Context c)throws Exception{return get(c,KEY_TOKEN);}
     static void clearTokenOnly(Context c){c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().remove(KEY_TOKEN).apply();}
     static void clearSecrets(Context c){c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().apply();}
+    static void reset(Context c){clearSecrets(c);deleteKey();}
     private static void put(Context c,String key,String value)throws Exception{
         try{putInternal(c,key,value);}catch(Exception first){deleteKey();clearSecrets(c);putInternal(c,key,value);}
     }
@@ -38,11 +39,8 @@ final class SecureStore {
     private static String get(Context c,String key)throws Exception{
         String packed=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString(key,"");
         if(packed.isEmpty())return "";String[] parts=packed.split("\\.",2);if(parts.length!=2)return "";
-        try{
-            Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(GCM_TAG_BITS,Base64.decode(parts[0],Base64.NO_WRAP)));
-            return new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),StandardCharsets.UTF_8);
-        }catch(Exception bad){clearSecrets(c);deleteKey();return "";}
+        try{Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(GCM_TAG_BITS,Base64.decode(parts[0],Base64.NO_WRAP)));return new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),StandardCharsets.UTF_8);}
+        catch(Exception bad){reset(c);return "";}
     }
     private static SecretKey getOrCreateKey()throws Exception{
         KeyStore ks=KeyStore.getInstance(STORE);ks.load(null);
