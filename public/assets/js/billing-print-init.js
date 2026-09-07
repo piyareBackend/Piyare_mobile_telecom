@@ -1,35 +1,45 @@
-/* PMT billing print bootstrap — exposes an immediate queue so billing never races script loading. */
+/* PMT billing print bootstrap — deterministic loader + saved-bill auto preview. */
 (function(){
   'use strict';
-  if(!/\/admin\/billing\.html$/.test(location.pathname))return;
-  const pending=[];
-  const existing=window.PMTBillingPrint;
-  if(!existing){
-    window.PMTBillingPrint={
-      show:function(){pending.push({method:'show',args:Array.from(arguments)});},
-      print:function(){pending.push({method:'print',args:Array.from(arguments)});}
-    };
-  }
-  if(document.querySelector('script[data-pmt-billing-print]'))return;
-  const s=document.createElement('script');
-  s.src='../assets/js/billing-print.js?v=6';
-  s.async=false;
-  s.dataset.pmtBillingPrint='1';
-  s.onload=function(){
-    const api=window.PMTBillingPrint;
-    if(!api)return;
+  if(!/\/admin\/(billing|pos)\.html$/i.test(location.pathname))return;
+
+  var pending=[];
+  var loading=false;
+  var ready=false;
+
+  function drain(){
+    var api=window.PMTBillingPrint;
+    if(!api||typeof api.show!=='function')return;
+    ready=true;
     while(pending.length){
-      const job=pending.shift();
-      try{
-        if(typeof api[job.method]==='function')api[job.method].apply(api,job.args);
-      }catch(err){console.error('PMT billing print job failed',err);}
+      var job=pending.shift();
+      try{api.show.apply(api,job);}catch(err){console.error('PMT print job failed',err);}
     }
-  };
-  s.onerror=function(){
-    pending.length=0;
-    console.error('PMT billing print renderer failed to load');
-    const fallback=window.PMTBillingPrint;
-    if(fallback)fallback.show=function(){alert('Invoice print module could not load. Please refresh the Billing page and try again.');};
-  };
-  document.head.appendChild(s);
+  }
+
+  function load(){
+    if(loading||ready)return;
+    loading=true;
+    var s=document.createElement('script');
+    s.src='/assets/js/billing-print.js?v=8';
+    s.async=false;
+    s.dataset.pmtBillingPrint='1';
+    s.onload=function(){loading=false;drain();};
+    s.onerror=function(){loading=false;console.error('PMT billing print renderer failed to load');};
+    document.head.appendChild(s);
+  }
+
+  var current=window.PMTBillingPrint;
+  if(!current||typeof current.show!=='function'){
+    window.PMTBillingPrint={
+      show:function(result,options){pending.push([result,options||{}]);load();},
+      print:function(result,options){pending.push([result,Object.assign({},options||{},{autoPrint:true})]);load();}
+    };
+  }else{ready=true;}
+  load();
+
+  window.addEventListener('pmt-bill-saved',function(e){
+    var d=e&&e.detail||{};
+    if(d.result)window.PMTBillingPrint.show(d.result,d.options||{});
+  });
 })();
