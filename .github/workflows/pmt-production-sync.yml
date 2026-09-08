@@ -8,16 +8,20 @@ on:
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: 22
+
 jobs:
   cloudflare:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Verify Cloudflare credentials
         env:
@@ -33,7 +37,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc --no-update-check
 
-      - name: Verify production HTML
+      - name: Verify production assets
         run: |
+          set -e
           curl --fail --silent --show-error --location --max-time 30 https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/shop.html | grep -q "pmtShopToolbar"
           curl --fail --silent --show-error --location --max-time 30 https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/assets/js/site-enhancer.js | grep -q "pmt-polished"
+          echo "Production verification passed"
