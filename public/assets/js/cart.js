@@ -6,18 +6,29 @@
   let cart=readCart();
   let appliedCoupon=null;
   let products=[];
+  let productsPromise=null;
 
-  function readCart(){
-    try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v:[];}catch(_){return[];}
-  }
+  function readCart(){try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v:[]}catch(_){return[];}}
   function saveCart(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(cart));}catch(_){}
   }
   function key(id,variantId=''){return String(id)+'::'+String(variantId||'');}
   function find(id,variantId=''){const k=key(id,variantId);return cart.find(x=>key(x.id,x.variantId)===k);}
   function getProduct(id){return products.find(x=>String(x.id)===String(id));}
 
-  function addToCart(id,variantId='',quantity=1){
-    const p=getProduct(id);
+  async function ensureProducts(){
+    if(products.length)return products;
+    if(productsPromise)return productsPromise;
+    productsPromise=(async()=>{
+      try{products=await (window.pmtGetPublicProducts?window.pmtGetPublicProducts():[]);window.PMT_PRODUCTS=products;return products;}
+      catch(e){console.error('PMT cart product data failed to load',e);return[];}
+      finally{productsPromise=null;}
+    })();
+    return productsPromise;
+  }
+
+  async function addToCart(id,variantId='',quantity=1){
+    let p=getProduct(id);
+    if(!p){await ensureProducts();p=getProduct(id);}
     if(!p)return false;
     const v=Array.isArray(p.variants)?p.variants.find(x=>String(x.id)===String(variantId)):null;
     const stock=Math.max(0,Number(v?.stock??p.stock??0));
@@ -33,9 +44,7 @@
     item.qty=Number(item.qty||0)+Number(delta||0);
     if(item.qty<=0)removeFromCart(id,variantId);else{item.qty=Math.min(item.qty,Math.max(1,Number(item.stock)||99));saveCart();renderCart();}
   }
-  function removeFromCart(id,variantId=''){
-    const k=key(id,variantId);cart=cart.filter(x=>key(x.id,x.variantId)!==k);saveCart();renderCart();
-  }
+  function removeFromCart(id,variantId=''){const k=key(id,variantId);cart=cart.filter(x=>key(x.id,x.variantId)!==k);saveCart();renderCart();}
   function subtotal(){return cart.reduce((s,i)=>s+Number(i.price||0)*Math.max(0,Number(i.qty)||0),0);}
   function openCart(){document.getElementById('drawer')?.classList.add('open');document.getElementById('overlay')?.classList.add('open');}
   function closeCart(){document.getElementById('drawer')?.classList.remove('open');document.getElementById('overlay')?.classList.remove('open');}
@@ -56,14 +65,24 @@
     body.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>removeFromCart(b.dataset.remove,b.dataset.variant)));
     document.getElementById('couponBtn')?.addEventListener('click',applyCoupon);
   }
-  async function applyCoupon(){
-    const input=document.getElementById('couponInput'),msg=document.getElementById('couponMsg'),code=(input?.value||'').trim().toUpperCase();if(!code)return;
-    try{const d=await pmtGet('publicCoupons');const x=(d?.items||[]).find(c=>String(c.code).toUpperCase()===code);appliedCoupon=x||null;if(msg)msg.textContent=x?'Coupon applied.':'Invalid or expired coupon.';renderCart();}catch(_){if(msg)msg.textContent='Unable to validate coupon right now.';}
+  async function applyCoupon(){const input=document.getElementById('couponInput'),msg=document.getElementById('couponMsg'),code=(input?.value||'').trim().toUpperCase();if(!code)return;try{const d=await pmtGet('publicCoupons');const x=(d?.items||[]).find(c=>String(c.code).toUpperCase()===code);appliedCoupon=x||null;if(msg)msg.textContent=x?'Coupon applied.':'Invalid or expired coupon.';renderCart();}catch(_){if(msg)msg.textContent='Unable to validate coupon right now.';}}
+
+  function enhanceProductButtons(){
+    const grid=document.getElementById('productGrid');if(!grid)return;
+    grid.querySelectorAll('.card').forEach(card=>{
+      const add=card.querySelector('.add-btn'),link=card.querySelector('a.product-link');
+      if(add){add.textContent='Add to Cart';add.setAttribute('aria-label','Add product to cart');}
+      if(link&&!card.querySelector('.pmt-view-product')){
+        const id=new URL(link.href,location.href).searchParams.get('id');
+        if(id){const row=document.createElement('div');row.className='pmt-product-actions';row.style.cssText='display:flex;gap:8px;align-items:center;padding:0 16px 16px;';const view=document.createElement('a');view.className='btn btn-blue pmt-view-product';view.href='product.html?id='+encodeURIComponent(id);view.textContent='View';row.appendChild(view);card.appendChild(row);}
+      }
+    });
   }
-  async function loadProducts(){
-    try{products=await (window.pmtGetPublicProducts?window.pmtGetPublicProducts():Promise.resolve([]));window.PMT_PRODUCTS=products;window.dispatchEvent(new CustomEvent('pmt-products-ready',{detail:{count:products.length}}));}
-    catch(e){products=[];console.error('PMT cart product data failed to load',e);}
+  function observeProductGrid(){
+    const grid=document.getElementById('productGrid');if(!grid||grid.dataset.pmtObserved)return;
+    grid.dataset.pmtObserved='1';const observer=new MutationObserver(enhanceProductButtons);observer.observe(grid,{childList:true,subtree:true});enhanceProductButtons();
   }
+
   window.addToCart=addToCart;
   window.removeFromCart=removeFromCart;
   window.changeCartQty=changeQty;
@@ -73,5 +92,6 @@
   document.getElementById('cartClose')?.addEventListener('click',closeCart);
   document.getElementById('overlay')?.addEventListener('click',closeCart);
   renderCart();
-  loadProducts();
+  ensureProducts();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',observeProductGrid,{once:true});else observeProductGrid();
 })();
