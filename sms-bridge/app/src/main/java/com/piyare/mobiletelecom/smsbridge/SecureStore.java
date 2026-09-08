@@ -31,9 +31,13 @@ final class SecureStore {
         try{putInternal(c,key,value);}catch(Exception first){deleteKey();clearSecrets(c);putInternal(c,key,value);}
     }
     private static void putInternal(Context c,String key,String value)throws Exception{
-        byte[] iv=new byte[12];new java.security.SecureRandom().nextBytes(iv);
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(GCM_TAG_BITS,iv));
+        // Android Keystore keys normally require randomized encryption. Supplying our
+        // own IV here causes: "Caller-provided IV not permitted" on affected devices.
+        // Let Keystore generate the IV, then persist that IV with the ciphertext.
+        cipher.init(Cipher.ENCRYPT_MODE,getOrCreateKey());
+        byte[] iv=cipher.getIV();
+        if(iv==null||iv.length==0)throw new Exception("Keystore did not provide an IV");
         byte[] ct=cipher.doFinal(String.valueOf(value==null?"":value).getBytes(StandardCharsets.UTF_8));
         String packed=Base64.encodeToString(iv,Base64.NO_WRAP)+"."+Base64.encodeToString(ct,Base64.NO_WRAP);
         if(!c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(key,packed).commit())throw new Exception("Could not save secure credentials");
@@ -43,8 +47,10 @@ final class SecureStore {
         if(packed.isEmpty())return "";
         String[] parts=packed.split("\\.",2);if(parts.length!=2)return "";
         try{
+            byte[] iv=Base64.decode(parts[0],Base64.NO_WRAP);
+            if(iv.length==0)throw new Exception("Invalid stored IV");
             Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(GCM_TAG_BITS,Base64.decode(parts[0],Base64.NO_WRAP)));
+            cipher.init(Cipher.DECRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(GCM_TAG_BITS,iv));
             return new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),StandardCharsets.UTF_8);
         }catch(Exception bad){reset(c);return "";}
     }
@@ -60,6 +66,7 @@ final class SecureStore {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
                 .build());
         return g.generateKey();
     }
