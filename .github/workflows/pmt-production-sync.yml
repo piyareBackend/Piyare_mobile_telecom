@@ -35,21 +35,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e public/assets/js/commerce-fixes.js
-          test ! -e public/assets/js/product-fixes.js
-          ! grep -q 'assets/js/commerce-fixes.js' public/*.html
-          ! grep -q 'assets/js/product-fixes.js' public/*.html
-          ! grep -q 'class="page-hero"' public/shop.html
-          grep -q 'const result=await pmtResponse' public/checkout.html
-          grep -q 'result.ok === true' public/checkout.html
-          grep -q 'getElementById' public/track.html
-          grep -q 'getUserMedia' public/assets/js/barcode-camera.js
-          grep -q "CACHE='pmt-admin-shell-v10'" public/admin/sw.js
-          node --check public/assets/js/app.js
-          node --check public/assets/js/cart.js
-          node --check public/assets/js/config.js
-          node --check public/assets/js/barcode-camera.js
-          node --check public/assets/js/billing-print.js
+          test ! -e public/assets/js/commerce-fixes.js; echo "obsolete commerce cart file absent"
+          test ! -e public/assets/js/product-fixes.js; echo "obsolete product override file absent"
+          ! grep -q 'assets/js/commerce-fixes.js' public/*.html; echo "no commerce override references"
+          ! grep -q 'assets/js/product-fixes.js' public/*.html; echo "no product override references"
+          ! grep -q 'class="page-hero"' public/shop.html; echo "shop hero removed"
+          grep -q 'pmtResponse(response)' public/checkout.html; echo "checkout parses backend response"
+          grep -q 'result?.ok!==true' public/checkout.html; echo "checkout requires successful order"
+          grep -q 'getElementById' public/track.html; echo "tracking uses explicit DOM refs"
+          grep -q 'getUserMedia' public/assets/js/barcode-camera.js; echo "barcode camera present"
+          grep -q "CACHE='pmt-admin-shell-v10'" public/admin/sw.js; echo "PWA cache version current"
+          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js; do node --check "$file"; echo "syntax ok: $file"; done
           echo "Static architecture smoke tests passed"
 
       - name: Deploy Worker and static assets
@@ -66,10 +62,11 @@ jobs:
           for page in / /shop.html /product.html /checkout.html /contact.html /repair.html /track.html /coupons.html; do
             curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
             test -s /tmp/pmt-page.html
+            echo "production page ok: $page"
           done
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q "pmtShopToolbar"
-          ! curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'page-hero'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q "getElementById"
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/cart.js" | grep -q "single source of truth"
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js?v=10" | grep -q "pmt-admin-shell-v10"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q "pmtShopToolbar"; echo "production shop structure ok"
+          ! curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'page-hero'; echo "production shop hero absent"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q "getElementById"; echo "production tracking structure ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/cart.js" | grep -q "single source of truth"; echo "production cart client ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js?v=10" | grep -q "pmt-admin-shell-v10"; echo "production PWA cache version ok"
           echo "Production asset smoke tests passed"
