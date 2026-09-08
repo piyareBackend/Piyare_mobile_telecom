@@ -14,8 +14,8 @@
         if(!detector)detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','qr_code']});
         stopCamera();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
         video.srcObject=stream;video.style.display='block';if(stop)stop.style.display='inline-block';await video.play();setMsg('Point the rear camera at the barcode…');
-        timer=setInterval(async function(){if(!video.videoWidth)return;try{var codes=await detector.detect(video);if(codes&&codes.length){var value=String(codes[0].rawValue||'').trim();if(value){search.value=value;search.dispatchEvent(new Event('input',{bubbles:true}));setMsg('Scanned: '+value);stopCamera();}}}catch(e){}},220);
-      }catch(e){stopCamera();setMsg(e&&e.name==='NotAllowedError'?'Camera permission was denied. Allow Camera for PMT Admin in Android/app settings.':'Could not open the camera: '+(e.message||e.name||'unknown error'));}
+        timer=setInterval(async function(){if(!video.videoWidth)return;try{var codes=await detector.detect(video);if(codes&&codes.length){var value=String(codes[0].rawValue||'').trim();if(value){search.value=value;search.dispatchEvent(new Event('input',{bubbles:true}));setMsg('Scanned: '+value);stopCamera();}}}catch(e){console.error('Barcode detection failed',e)}},220);
+      }catch(e){stopCamera();console.error('Barcode camera start failed',e);setMsg(e&&e.name==='NotAllowedError'?'Camera permission was denied. Allow Camera for PMT Admin in Android/app settings.':'Could not open the camera. Please use manual barcode entry or try again.');}
     }
     btn.addEventListener('click',function(e){e.preventDefault();start()});if(stop)stop.addEventListener('click',stopCamera);window.addEventListener('pagehide',stopCamera);window.PMT_STOP_BARCODE_CAMERA=stopCamera;
   }
