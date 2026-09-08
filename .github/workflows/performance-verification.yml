@@ -1,0 +1,65 @@
+name: PMT Performance Verification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: JavaScript syntax
+        run: |
+          set -euo pipefail
+          for file in \
+            public/assets/js/app.js \
+            public/assets/js/site-enhancer.js \
+            public/assets/js/banner.js \
+            public/assets/js/gallery.js \
+            public/assets/js/cart.js \
+            public/assets/js/config.js \
+            public/assets/js/barcode-camera.js \
+            public/assets/js/billing-print.js \
+            public/assets/js/unified-billing-engine.js \
+            worker.js; do
+            node --check "$file"
+            echo "syntax ok: $file"
+          done
+
+      - name: Performance wiring checks
+        run: |
+          set -euo pipefail
+          grep -q 'PMT_REQUEST_TIMEOUT_GET=7000' public/assets/js/app.js
+          grep -q 'PMT_REQUEST_TIMEOUT_POST=15000' public/assets/js/app.js
+          ! grep -q 'retry=true' public/assets/js/app.js
+          grep -q 'pmtGetPublicProducts' public/assets/js/site-enhancer.js
+          grep -q 'pmtGetInitialContent' public/assets/js/banner.js
+          grep -q 'pmtGetInitialContent' public/assets/js/gallery.js
+          grep -q "'publicProducts','publicCoupons','track','content'" worker.js
+          grep -q 'cacheTtl:20' worker.js
+          grep -q 'API_UPSTREAM_TIMEOUT' worker.js
+          echo "performance wiring checks passed"
+
+      - name: Build Android APK
+        run: |
+          set -euo pipefail
+          gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
+          test -s sms-bridge/app/build/outputs/apk/debug/app-debug.apk
+          echo "APK build passed"
