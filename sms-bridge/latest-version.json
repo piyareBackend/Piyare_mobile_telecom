@@ -1,0 +1,7 @@
+{
+  "versionCode": 7,
+  "versionName": "2.5",
+  "minimumVersionCode": 7,
+  "releaseNotes": "Stable Android Keystore credentials, improved login recovery, PMT website logo, and update checker.",
+  "updatePage": "https://github.com/piyareBackend/Piyare_mobile_telecom_v2/actions/workflows/build-sms-bridge.yml"
+}
