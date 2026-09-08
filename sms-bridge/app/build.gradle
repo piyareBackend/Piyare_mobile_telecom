@@ -7,7 +7,21 @@ android {
         applicationId 'com.piyare.mobiletelecom.smsbridge'
         minSdk 26
         targetSdk 34
-        versionCode 9
-        versionName '2.7'
+        versionCode 10
+        versionName '2.8'
     }
 }
+
+def pmtLogoFile = file('src/main/res/drawable-nodpi/logo.png')
+tasks.register('downloadPmtLogo') {
+    outputs.file(pmtLogoFile)
+    doLast {
+        pmtLogoFile.parentFile.mkdirs()
+        def conn = new URL('https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/assets/logo.png').openConnection()
+        conn.setConnectTimeout(15000)
+        conn.setReadTimeout(15000)
+        conn.connect()
+        conn.inputStream.withCloseable { input -> pmtLogoFile.withOutputStream { output -> output << input } }
+    }
+}
+tasks.named('preBuild').configure { dependsOn('downloadPmtLogo') }
