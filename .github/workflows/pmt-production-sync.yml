@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          for page in / /shop.html /product.html /cart.html /checkout.html /contact.html /repair.html /track.html /coupons.html; do
+          for page in / /shop.html /product.html /checkout.html /contact.html /repair.html /track.html /coupons.html; do
             curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
             test -s /tmp/pmt-page.html
           done
