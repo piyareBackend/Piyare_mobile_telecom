@@ -1,7 +1,7 @@
 {
-  "versionCode": 9,
-  "versionName": "2.7",
-  "minimumVersionCode": 9,
-  "releaseNotes": "Integrated mobile home with SMS Bridge and full Admin Control Room, improved responsive admin WebView with file uploads, fixed Android Keystore IV handling, and softened PMT app/web icon corners.",
+  "versionCode": 10,
+  "versionName": "2.8",
+  "minimumVersionCode": 10,
+  "releaseNotes": "Faster admin page navigation without blank flashes, native mobile back/home/logout controls, quick billing home shortcut, Paper Mono and Blueprint Draft APK themes, packaged website logo, reliable POS camera barcode scanning, staff role persistence, and stronger product SEO structured data.",
   "updatePage": "https://github.com/piyareBackend/Piyare_mobile_telecom_v2/actions/workflows/build-sms-bridge.yml"
 }
