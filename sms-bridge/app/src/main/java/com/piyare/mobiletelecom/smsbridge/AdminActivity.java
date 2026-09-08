@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -11,22 +12,36 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 public class AdminActivity extends Activity {
     private static final String ADMIN_URL="https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/admin/";
+    private static final String BILLING_URL="https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/admin/billing.html";
+    private static final String API="https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/api";
     private static final int FILE_PICKER=701;
-    private WebView web;
-    private ValueCallback<Uri[]> uploadCallback;
+    private WebView web;private ValueCallback<Uri[]> uploadCallback;
+    private int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xFF111827);
-        FrameLayout root=new FrameLayout(this);web=new WebView(this);root.addView(web,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
-        WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);s.setDatabaseEnabled(true);s.setAllowFileAccess(true);s.setAllowContentAccess(true);s.setBuiltInZoomControls(false);s.setDisplayZoomControls(false);s.setLoadWithOverviewMode(false);s.setUseWideViewPort(false);s.setMediaPlaybackRequiresUserGesture(false);
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(6),0,dp(6),0);bar.setBackgroundColor(0xFF111827);
+        Button home=button("Home");home.setOnClickListener(v->goHome());bar.addView(home,new LinearLayout.LayoutParams(dp(72),dp(46)));
+        Button back=button("Back");back.setOnClickListener(v->{if(web.canGoBack())web.goBack();else goHome();});bar.addView(back,new LinearLayout.LayoutParams(dp(72),dp(46)));
+        TextView title=new TextView(this);title.setText("PMT Admin Control");title.setTextColor(0xFFFFFFFF);title.setTextSize(16);title.setGravity(Gravity.CENTER);bar.addView(title,new LinearLayout.LayoutParams(0,dp(46),1));
+        Button logout=button("Logout");logout.setOnClickListener(v->logout());bar.addView(logout,new LinearLayout.LayoutParams(dp(78),dp(46)));root.addView(bar);
+        FrameLayout frame=new FrameLayout(this);web=new WebView(this);frame.addView(web,new FrameLayout.LayoutParams(-1,-1));root.addView(frame,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
+        WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);s.setDatabaseEnabled(true);s.setAllowFileAccess(true);s.setAllowContentAccess(true);s.setBuiltInZoomControls(false);s.setDisplayZoomControls(false);s.setLoadWithOverviewMode(false);s.setUseWideViewPort(false);s.setMediaPlaybackRequiresUserGesture(false);s.setSupportZoom(false);
         CookieManager.getInstance().setAcceptCookie(true);CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
         web.setWebViewClient(new WebViewClient(){@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){Uri u=r.getUrl();String host=u.getHost();if(host!=null&&host.equals("piyare-mobile-telecom.sadab-notes-backup.workers.dev"))return false;try{startActivity(new Intent(Intent.ACTION_VIEW,u));}catch(Exception ignored){}return true;}});
         web.setWebChromeClient(new WebChromeClient(){@Override public boolean onShowFileChooser(WebView v,ValueCallback<Uri[]> cb,FileChooserParams params){if(uploadCallback!=null)uploadCallback.onReceiveValue(null);uploadCallback=cb;try{Intent i=params.createIntent();i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,FILE_PICKER);return true;}catch(Exception e){uploadCallback=null;return false;}}});
-        web.loadUrl(ADMIN_URL);
+        boolean billing=b!=null&&b.getBoolean("openBilling",false);web.loadUrl(billing?BILLING_URL:ADMIN_URL);
     }
+    private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextSize(11);b.setTextColor(0xFFFFFFFF);b.setAllCaps(false);b.setBackgroundColor(0xFF111827);return b;}
+    private void goHome(){startActivity(new Intent(this,HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();}
+    private void logout(){web.evaluateJavascript("(async()=>{try{const t=sessionStorage.getItem('pmt-admin-token');await fetch('"+API+"',{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'logout',token:t||''})});}catch(e){}sessionStorage.clear();localStorage.removeItem('pmt-admin-token');localStorage.removeItem('pmt-admin-user');})()",v->goHome());}
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){super.onActivityResult(requestCode,resultCode,data);if(requestCode==FILE_PICKER&&uploadCallback!=null){Uri[] r=null;if(resultCode==RESULT_OK&&data!=null){Uri u=data.getData();if(u!=null)r=new Uri[]{u};else if(data.getClipData()!=null){int n=data.getClipData().getItemCount();r=new Uri[n];for(int i=0;i<n;i++)r[i]=data.getClipData().getItemAt(i).getUri();}}uploadCallback.onReceiveValue(r);uploadCallback=null;}}
-    @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
+    @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else goHome();}
     @Override protected void onDestroy(){if(uploadCallback!=null){uploadCallback.onReceiveValue(null);uploadCallback=null;}if(web!=null){web.stopLoading();web.destroy();}super.onDestroy();}
 }
