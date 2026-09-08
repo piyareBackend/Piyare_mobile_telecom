@@ -5,8 +5,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <application android:theme="@style/AppTheme" android:label="PMT SMS Bridge" android:icon="@drawable/pmt_logo" android:roundIcon="@drawable/pmt_logo" android:allowBackup="false" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:exported="true">
+    <application android:theme="@style/AppTheme" android:label="Piyare Mobile Telecom" android:icon="@drawable/pmt_logo" android:roundIcon="@drawable/pmt_logo" android:allowBackup="false" android:supportsRtl="true">
+        <activity android:name=".AdminActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".MainActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".HomeActivity" android:exported="true" android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
