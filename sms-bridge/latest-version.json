@@ -1,7 +1,7 @@
 {
-  "versionCode": 8,
-  "versionName": "2.6",
-  "minimumVersionCode": 8,
-  "releaseNotes": "Fixed Android Keystore login failure caused by caller-provided GCM IV; Keystore now generates the encryption IV securely.",
+  "versionCode": 9,
+  "versionName": "2.7",
+  "minimumVersionCode": 9,
+  "releaseNotes": "Integrated mobile home with SMS Bridge and full Admin Control Room, improved responsive admin WebView with file uploads, fixed Android Keystore IV handling, and softened PMT app/web icon corners.",
   "updatePage": "https://github.com/piyareBackend/Piyare_mobile_telecom_v2/actions/workflows/build-sms-bridge.yml"
 }
