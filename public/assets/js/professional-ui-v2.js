@@ -1,0 +1,6 @@
+(function(){
+  function stripEmoji(t){return String(t||'').replace(/[\u{1F300}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u2600-\u27BF]/gu,'').replace(/\s{2,}/g,' ').trim()}
+  function clean(){document.querySelectorAll('body *').forEach(function(el){if(el.children.length===0){var old=el.textContent||'',t=old.replace(/Search, filter and sort products without another API request\.?/i,'Search, filter and sort products instantly.').replace(/API not configured\.?/ig,'Please try again.').replace(/Unable to validate coupon\.?/ig,'Please try again.');t=stripEmoji(t);if(t!==old)el.textContent=t;}});var theme=document.getElementById('themeToggle');if(theme){theme.textContent='';theme.title='Toggle theme';theme.setAttribute('aria-label','Toggle theme')}var cart=document.getElementById('cartOpen');if(cart&&!cart.querySelector('[data-cart-label]')){var n=document.createElement('span');n.dataset.cartLabel='1';n.textContent='Cart';cart.insertBefore(n,cart.firstChild)}}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',clean,{once:true});else clean();
+  new MutationObserver(clean).observe(document.body,{childList:true,subtree:true});
+})();
