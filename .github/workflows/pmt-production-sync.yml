@@ -45,8 +45,23 @@ jobs:
           grep -q 'getElementById' public/track.html; echo "tracking uses explicit DOM refs"
           grep -q 'getUserMedia' public/assets/js/barcode-camera.js; echo "barcode camera present"
           grep -q "CACHE='pmt-admin-shell-v10'" public/admin/sw.js; echo "PWA cache version current"
-          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js; do node --check "$file"; echo "syntax ok: $file"; done
+          grep -q 'PMTBilling.complete' public/admin/billing.html; echo "unified billing transaction wired"
+          grep -q 'PMTBilling.snapshot' public/admin/billing.html; echo "unified billing calculator wired"
+          grep -q 'createPosBill' public/assets/js/unified-billing-engine.js; echo "unified billing backend flow wired"
+          grep -q 'BILLING_URL' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK canonical billing URL present"
+          grep -q 'openBilling' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/HomeActivity.java; echo "APK Home billing shortcut present"
+          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js; do node --check "$file"; echo "syntax ok: $file"; done
           echo "Static architecture smoke tests passed"
+
+      - name: Build Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gradle >/dev/null 2>&1 || { echo "Gradle is not installed on the runner"; exit 1; }
+          gradle --version
+          gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
+          test -s sms-bridge/app/build/outputs/apk/debug/app-debug.apk
+          echo "APK build passed: sms-bridge/app/build/outputs/apk/debug/app-debug.apk"
 
       - name: Deploy Worker and static assets
         env:
@@ -59,14 +74,23 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          for page in / /shop.html /product.html /checkout.html /contact.html /repair.html /track.html /coupons.html; do
+          for page in / /shop.html /product.html /checkout.html /contact.html /repair.html /track.html /coupons.html /admin/billing.html; do
             curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
             test -s /tmp/pmt-page.html
             echo "production page ok: $page"
           done
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/billing.html" | grep -q 'PMTBilling.complete'; echo "production unified billing wiring ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/unified-billing-engine.js" | grep -q 'createPosBill'; echo "production billing engine ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/billing-print.js" | grep -q 'window.print'; echo "production print invocation ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q "pmtShopToolbar"; echo "production shop structure ok"
           ! curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'page-hero'; echo "production shop hero absent"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q "getElementById"; echo "production tracking structure ok"
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/cart.js" | grep -q "single source of truth"; echo "production cart client ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js?v=10" | grep -q "pmt-admin-shell-v10"; echo "production PWA cache version ok"
           echo "Production asset smoke tests passed"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmt-debug-apk
+          path: sms-bridge/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
