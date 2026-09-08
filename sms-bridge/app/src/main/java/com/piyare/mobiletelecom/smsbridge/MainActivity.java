@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
     private static final String API="https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/api";
     private static final String WEBSITE_LOGO="https://piyare-mobile-telecom.sadab-notes-backup.workers.dev/assets/logo.png";
     private static final String UPDATE_MANIFEST="https://raw.githubusercontent.com/piyareBackend/Piyare_mobile_telecom_v2/main/sms-bridge/latest-version.json";
-    private static final int VERSION_CODE=7;
+    private static final int VERSION_CODE=8;
     private android.content.SharedPreferences prefs;
     private EditText username,password;
     private TextView status;
@@ -96,7 +96,7 @@ public class MainActivity extends Activity {
     private void startBridgeService(){Intent i=new Intent(this,SmsBridgeService.class);if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}
 
     private void checkForUpdateQuietly(){new Thread(()->{try{JSONObject j=new JSONObject(read(new URL(UPDATE_MANIFEST).openStream()));int latest=j.optInt("versionCode",VERSION_CODE);if(latest>VERSION_CODE)runOnUiThread(()->status.setText("Update available: v"+j.optString("versionName","new")+". Tap CHECK FOR UPDATE."));}catch(Exception ignored){}} ,"pmt-update-check").start();}
-    private void checkForUpdate(){new Thread(()->{try{JSONObject j=new JSONObject(read(new URL(UPDATE_MANIFEST).openStream()));int latest=j.optInt("versionCode",VERSION_CODE);String notes=j.optString("releaseNotes","");if(latest>VERSION_CODE){String page=j.optString("updatePage","");runOnUiThread(()->{status.setText("Update available: v"+j.optString("versionName","new")+"\n"+notes);if(!page.isEmpty())startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(page)));});}else runOnUiThread(()->status.setText("PMT SMS Bridge is up to date (v2.5)."));}catch(Exception e){runOnUiThread(()->status.setText("Update check failed: "+safeMessage(e)));}} ,"pmt-update-check-manual").start();}
+    private void checkForUpdate(){new Thread(()->{try{JSONObject j=new JSONObject(read(new URL(UPDATE_MANIFEST).openStream()));int latest=j.optInt("versionCode",VERSION_CODE);String notes=j.optString("releaseNotes","");if(latest>VERSION_CODE){String page=j.optString("updatePage","");runOnUiThread(()->{status.setText("Update available: v"+j.optString("versionName","new")+"\n"+notes);if(!page.isEmpty())startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(page)));});}else runOnUiThread(()->status.setText("PMT SMS Bridge is up to date (v2.6)."));}catch(Exception e){runOnUiThread(()->status.setText("Update check failed: "+safeMessage(e)));}} ,"pmt-update-check-manual").start();}
 
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grants){super.onRequestPermissionsResult(requestCode,permissions,grants);if(requestCode==SMS_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)status.setText("SMS permission: ALLOWED. Tap TEST LOGIN.");else status.setText("SMS permission was not granted. Open App Settings and check SMS permission if available.");}}
 }
