@@ -50,6 +50,11 @@ jobs:
           grep -q 'createPosBill' public/assets/js/unified-billing-engine.js; echo "unified billing backend flow wired"
           grep -q 'BILLING_URL' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK canonical billing URL present"
           grep -q 'openBilling' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/HomeActivity.java; echo "APK Home billing shortcut present"
+          grep -q "location.replace('/admin/billing.html'+location.search+location.hash)" public/admin/pos.html; echo "legacy POS delegates to canonical Billing"
+          ! grep -Eq 'function (addToCart|renderCart|calculateTotal|createOrder)|\b(let|var|const) cart\b|window\.cart|createPosBill' public/admin/pos.html; echo "no independent POS billing implementation"
+          ! grep -Eq 'function (addToCart|renderCart|calculateTotal|createOrder)' public/admin/billing.html; echo "no duplicate billing function names"
+          ! grep -Eq '\b(let|var) cart\b|window\.cart' public/admin/billing.html; echo "no second global cart state"
+          ! grep -qi 'couponInput' public/admin/billing.html; echo "coupon UI not faked in Unified Billing"
           for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js; do node --check "$file"; echo "syntax ok: $file"; done
           echo "Static architecture smoke tests passed"
 
@@ -82,6 +87,7 @@ jobs:
           curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/billing.html" | grep -q 'PMTBilling.complete'; echo "production unified billing wiring ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/unified-billing-engine.js" | grep -q 'createPosBill'; echo "production billing engine ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/billing-print.js" | grep -q 'window.print'; echo "production print invocation ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/pos.html" | grep -q '/admin/billing.html'; echo "production POS compatibility route ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q "pmtShopToolbar"; echo "production shop structure ok"
           ! curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'page-hero'; echo "production shop hero absent"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q "getElementById"; echo "production tracking structure ok"
