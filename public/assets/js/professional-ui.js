@@ -1,0 +1,6 @@
+(function(){
+  function stripEmoji(t){return String(t||'').replace(/[\u{1F300}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u2600-\u27BF]/gu,'').replace(/\s{2,}/g,' ').trim()}
+  function clean(){document.querySelectorAll('body *').forEach(el=>{if(el.children.length===0){let t=el.textContent||'';t=t.replace(/Search, filter and sort products without another API request\.?/i,'Search, filter and sort products instantly.');t=t.replace(/API not configured\.?/ig,'Please try again.');t=t.replace(/Unable to validate coupon\.?/ig,'Please try again.');t=stripEmoji(t);if(t!==el.textContent)el.textContent=t;}});const theme=document.getElementById('themeToggle');if(theme){theme.textContent='';theme.title='Toggle theme';theme.setAttribute('aria-label','Toggle theme')}const cart=document.getElementById('cartOpen');if(cart&&!cart.querySelector('.cart-count'))cart.textContent='Cart';}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',clean,{once:true});else clean();
+  new MutationObserver(clean).observe(document.body,{childList:true,subtree:true});
+})();
