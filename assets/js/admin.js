@@ -1,8 +1,57 @@
 window.Admin={
  api:localStorage.getItem("pmt-api-url")||"",
- async request(payload){if(!this.api)throw Error("Enter the Apps Script API URL first.");const r=await fetch(this.api,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});const d=await r.json().catch(()=>({ok:false,message:"Invalid API response"}));return d;},
- async login(username,password,api){if(api){localStorage.setItem("pmt-api-url",api.trim());this.api=api.trim();}const d=await this.request({action:"adminLogin",username,password});if(!d.token)throw Error(d.message||"Login failed");sessionStorage.setItem("pmt-admin-token",d.token);sessionStorage.setItem("pmt-admin-user",JSON.stringify(d.user||{}));location.href="dashboard.html";},
+ _stepUpPromise:null,
+ async request(payload,opts){
+   opts=opts||{};
+   if(!this.api)throw Error("Enter the Apps Script API URL first.");
+   const body=Object.assign({},payload);
+   if(!body.token&&this.auth())body.token=this.auth();
+   if(opts.stepUpGrant)body.stepUpGrant=opts.stepUpGrant;
+   const r=await fetch(this.api,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)});
+   const d=await r.json().catch(()=>({ok:false,message:"Invalid API response"}));
+   if(d&&d.code==="STEP_UP_REQUIRED"&&!opts._retried){
+     const grant=await this.ensureStepUp();
+     return this.request(payload,{stepUpGrant:grant,_retried:true});
+   }
+   if(d&&d.code==="AUTH_REQUIRED"){
+     sessionStorage.removeItem("pmt-admin-token");sessionStorage.removeItem("pmt-admin-user");
+     if(!location.pathname.endsWith("login.html"))location.replace("login.html");
+   }
+   return d;
+ },
+ async login(username,password,api){
+   if(api){localStorage.setItem("pmt-api-url",api.trim());this.api=api.trim();}
+   const d=await this.request({action:"adminLogin",username,password});
+   if(!d||!d.otpRequired)throw Error(d&&d.message||"Login failed");
+   const code=await this.otpDialog({title:"Verify administrator",message:"Enter the 6-digit code sent to the configured administrator channel.",challengeId:d.challengeId,kind:"login"});
+   const v=await this.request({action:"adminStepUpVerify",challengeId:d.challengeId,otp:code});
+   if(!v||!v.token)throw Error(v&&v.message||"Verification failed");
+   sessionStorage.setItem("pmt-admin-token",v.token);sessionStorage.setItem("pmt-admin-user",JSON.stringify(v.user||{}));location.href="dashboard.html";
+ },
  auth(){return sessionStorage.getItem("pmt-admin-token")},
  user(){try{return JSON.parse(sessionStorage.getItem("pmt-admin-user")||"{}")}catch(e){return {}}},
+ async ensureStepUp(){
+   if(this._stepUpPromise)return this._stepUpPromise;
+   this._stepUpPromise=(async()=>{
+     const c=await this.request({action:"adminStepUpRequest"});
+     if(!c||!c.ok)throw Error(c&&c.message||"Could not start security verification");
+     const code=await this.otpDialog({title:"Confirm sensitive action",message:"A fresh verification code is required for this sensitive operation.",challengeId:c.challengeId,kind:"stepup"});
+     const v=await this.request({action:"adminStepUpVerify",challengeId:c.challengeId,otp:code});
+     if(!v||!v.grant)throw Error(v&&v.message||"Verification failed");
+     return v.grant;
+   })().finally(()=>{this._stepUpPromise=null;});
+   return this._stepUpPromise;
+ },
+ async otpDialog(o){
+   return new Promise((resolve,reject)=>{
+     const old=document.getElementById("pmt-otp-modal");if(old)old.remove();
+     const wrap=document.createElement("div");wrap.id="pmt-otp-modal";wrap.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:grid;place-items:center;padding:20px";
+     wrap.innerHTML='<form style="width:min(420px,100%);background:var(--card,#fff);color:inherit;border-radius:18px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.25)"><h2 style="margin:0 0 8px">'+escapeHtml(o.title||"Verify OTP")+'</h2><p style="margin:0 0 18px;color:var(--gray,#666)">'+escapeHtml(o.message||"Enter the verification code.")+'</p><label for="pmt-otp-input">6-digit code</label><input id="pmt-otp-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required style="width:100%;font-size:1.6rem;letter-spacing:.3em;text-align:center;margin:10px 0 14px;padding:12px"><div id="pmt-otp-msg" style="min-height:20px;margin-bottom:10px"></div><button class="btn btn-blue btn-full" type="submit">Verify</button><button class="btn btn-full" type="button" id="pmt-otp-cancel" style="margin-top:8px">Cancel</button></form>';
+     document.body.appendChild(wrap);const form=wrap.querySelector("form"),input=wrap.querySelector("#pmt-otp-input"),msg=wrap.querySelector("#pmt-otp-msg");input.focus();
+     form.onsubmit=e=>{e.preventDefault();const v=input.value.replace(/\D/g,"");if(v.length!==6){msg.textContent="Enter all 6 digits.";return}wrap.remove();resolve(v)};
+     wrap.querySelector("#pmt-otp-cancel").onclick=()=>{wrap.remove();reject(Error("Verification cancelled"))};
+     input.oninput=()=>{input.value=input.value.replace(/\D/g,"").slice(0,6)};
+   });
+ },
  logout(){const t=this.auth();this.request({action:"logout",token:t}).catch(()=>{});sessionStorage.removeItem("pmt-admin-token");sessionStorage.removeItem("pmt-admin-user");location.href="login.html"}
 };
