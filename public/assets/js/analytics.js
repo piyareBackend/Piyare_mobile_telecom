@@ -1,5 +1,19 @@
 (function(){
-const api=()=>localStorage.getItem("pmt-api-url")||"";
-window.PMTTrack=(event,meta={})=>{if(!api())return;const b=JSON.stringify({action:"analyticsEvent",event:String(event).slice(0,60),path:location.pathname,meta});try{navigator.sendBeacon(api(),new Blob([b],{type:"text/plain;charset=utf-8"}))}catch(e){}};
-PMTTrack("page_view");document.addEventListener("click",e=>{const x=e.target.closest("a,button");if(x&&x.matches(".btn,.add-btn,.cart-btn"))PMTTrack("cta_click",{label:(x.innerText||"").slice(0,80)})});
+  const api=()=>window.PMT_PUBLIC_API_URL||localStorage.getItem('pmt-api-url')||'';
+  const safeMeta=meta=>{const out={};Object.keys(meta||{}).slice(0,8).forEach(k=>{const v=meta[k];if(v==null)return;out[String(k).slice(0,40)]=String(v).slice(0,120)});return out};
+  window.PMTTrack=(event,meta={})=>{const endpoint=api();if(!endpoint)return;const b=JSON.stringify({action:'analyticsEvent',event:String(event).slice(0,60),path:location.pathname,meta:safeMeta(meta)});try{if(navigator.sendBeacon)navigator.sendBeacon(endpoint,new Blob([b],{type:'text/plain;charset=utf-8'}));else fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:b,keepalive:true}).catch(()=>{});}catch(e){}};
+  PMTTrack('page_view');
+  if(location.pathname.includes('/product.html'))PMTTrack('product_view',{product_id:new URLSearchParams(location.search).get('id')||''});
+  if(location.pathname.includes('/shop.html'))PMTTrack('shop_view');
+  if(location.pathname.includes('/checkout.html'))PMTTrack('checkout_start');
+  if(location.pathname.includes('/track.html'))PMTTrack('tracking_view');
+  if(location.pathname.includes('/repair.html'))PMTTrack('repair_view');
+  document.addEventListener('click',e=>{
+    const x=e.target.closest('a,button');if(!x)return;
+    const href=x.getAttribute('href')||'';const label=(x.innerText||x.getAttribute('aria-label')||'').trim().slice(0,80);
+    if(x.matches('.add-btn,.add-to-cart,[data-add-to-cart]'))PMTTrack('add_to_cart',{label});
+    else if(x.matches('.cart-btn,[data-cart]'))PMTTrack('cart_open');
+    else if(x.matches('.wa-float,[href*="wa.me"],a[href^="tel:"]'))PMTTrack('contact_click',{type:href.startsWith('tel:')?'call':'whatsapp'});
+    else if(x.matches('.btn,.btn-primary,.btn-outline'))PMTTrack('cta_click',{label,href});
+  },{passive:true});
 })();
