@@ -88,6 +88,20 @@ jobs:
           test -n "$(find sms-bridge/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           echo "APK release build passed"
 
+      - name: Deploy Apps Script backend when CI credentials are configured
+        if: ${{ secrets.CLASPRC_JSON != '' && secrets.CLASP_JSON != '' }}
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON" > .clasp.json
+          node -e "const c=require('./.clasp.json'); if(!c.rootDir || c.rootDir.replace(/\\\\/g,'/').replace(/^\\.\\//,'')!=='backend') throw new Error('CLASP_JSON must target rootDir=backend for this repository');"
+          npx --yes @google/clasp push --force
+          echo "Apps Script source pushed successfully"
+
       - name: Deploy Worker and static assets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
