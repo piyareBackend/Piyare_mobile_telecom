@@ -67,7 +67,13 @@ jobs:
           ! grep -Eq 'function (addToCart|renderCart|calculateTotal|createOrder)' public/admin/billing.html; echo "no duplicate billing function names"
           ! grep -Eq '\b(let|var) cart\b|window\.cart' public/admin/billing.html; echo "no second global cart state"
           ! grep -qi 'couponInput' public/admin/billing.html; echo "coupon UI not faked in Unified Billing"
-          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js; do node --check "$file"; echo "syntax ok: $file"; done
+          grep -q 'CustomerIdentities' backend/ZZZZZZZZZ_CustomerAccounts.gs; echo "customer identity schema present"
+          grep -q 'customer_id' backend/ZZZZZZZZZ_CustomerAccounts.gs; echo "canonical customer_id linkage present"
+          grep -q 'CustomerSessions' backend/ZZZZZZZZZZ_CustomerSessionStore.gs; echo "durable customer session store present"
+          grep -q 'customer_token' public/assets/js/customer-account.js; echo "customer token transport present"
+          grep -q 'customer_token:customerToken' public/assets/js/app.js; echo "authenticated checkout/repair transport wired"
+          test -f public/account.html && test -f public/login.html && test -f public/signup.html && test -f public/forgot-password.html && test -f public/reset-password.html; echo "customer account pages present"
+          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js public/assets/js/customer-account.js backend/*.gs; do node --check "$file"; echo "syntax ok: $file"; done
           echo "Static architecture smoke tests passed"
 
       - name: Build Android APK
@@ -93,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          for page in / /shop.html /product.html /checkout.html /order-confirmation.html /contact.html /repair.html /track.html /coupons.html /admin/billing.html; do
+          for page in / /shop.html /product.html /checkout.html /order-confirmation.html /contact.html /repair.html /track.html /coupons.html /account.html /login.html /signup.html /forgot-password.html /reset-password.html /admin/billing.html; do
             curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
             test -s /tmp/pmt-page.html
             echo "production page ok: $page"
@@ -109,6 +115,7 @@ jobs:
           curl --fail --silent --show-error --location --max-time 30 "$BASE/checkout.html" | grep -q 'order-confirmation.html'; echo "production checkout confirmation wiring ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q "getElementById"; echo "production tracking structure ok"
           curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js?v=10" | grep -q "pmt-admin-shell-v10"; echo "production PWA cache version ok"
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/customer-account.js" | grep -q 'PMTCustomer'; echo "production customer client asset ok"
           echo "Production asset smoke tests passed"
 
       - name: Upload APK artifacts
