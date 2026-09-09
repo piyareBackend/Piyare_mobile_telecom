@@ -8,6 +8,8 @@
   if(location.pathname.includes('/checkout.html'))PMTTrack('checkout_start');
   if(location.pathname.includes('/track.html'))PMTTrack('tracking_view');
   if(location.pathname.includes('/repair.html'))PMTTrack('repair_view');
+  let searchTimer=0;
+  document.addEventListener('input',e=>{const x=e.target;if(x&&x.id==='pmtShopSearch'){clearTimeout(searchTimer);searchTimer=setTimeout(()=>PMTTrack('search',{query:String(x.value||'').trim().slice(0,80)}),500);}}, {passive:true});
   document.addEventListener('click',e=>{
     const x=e.target.closest('a,button');if(!x)return;
     const href=x.getAttribute('href')||'';const label=(x.innerText||x.getAttribute('aria-label')||'').trim().slice(0,80);
