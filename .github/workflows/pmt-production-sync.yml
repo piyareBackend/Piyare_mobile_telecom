@@ -59,7 +59,7 @@ jobs:
           grep -q 'BILLING_URL' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK canonical billing URL present"
           grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK Safe Browsing enabled"
           grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK mixed content blocked"
-          grep -q 'setWebContentsDebuggingEnabled(BuildConfig.DEBUG)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK release WebView debugging disabled"
+          grep -q 'setWebContentsDebuggingEnabled((getApplicationInfo().flags&ApplicationInfo.FLAG_DEBUGGABLE)!=0)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java; echo "APK release WebView debugging disabled"
           grep -q 'openBilling' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/HomeActivity.java; echo "APK Home billing shortcut present"
           grep -q 'android:usesCleartextTraffic="false"' sms-bridge/app/src/main/AndroidManifest.xml; echo "APK cleartext traffic disabled"
           grep -q "location.replace('/admin/billing.html'+location.search+location.hash)" public/admin/pos.html; echo "legacy POS delegates to canonical Billing"
