@@ -2,23 +2,18 @@
 (function(){
   if(window.__PMT_CART_V3)return;
   window.__PMT_CART_V3=true;
-  const STORAGE_KEY='pmt-cart';
-  let cart=readCart();
-  let appliedCoupon=null;
-  let products=Array.isArray(window.PMT_PRODUCTS)?window.PMT_PRODUCTS:[];
-  let productsPromise=null;
+  const STORAGE_KEY='pmt-cart';let cart=readCart(),appliedCoupon=null,products=Array.isArray(window.PMT_PRODUCTS)?window.PMT_PRODUCTS:[],productsPromise=null;
   function readCart(){try{const v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v:[]}catch(_){return[];}}
-  function saveCart(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(cart));}catch(_){}
-  }
+  function saveCart(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(cart));}catch(_){} }
   function key(id,variantId=''){return String(id)+'::'+String(variantId||'');}
   function find(id,variantId=''){const k=key(id,variantId);return cart.find(x=>key(x.id,x.variantId)===k);}
   function getProduct(id){return products.find(x=>String(x.id)===String(id));}
   async function ensureProducts(){
     if(products.length)return products;
     if(Array.isArray(window.PMT_PRODUCTS)&&window.PMT_PRODUCTS.length){products=window.PMT_PRODUCTS;return products;}
+    if(Array.isArray(window.PRODUCTS)&&window.PRODUCTS.length){products=window.PRODUCTS;window.PMT_PRODUCTS=products;return products;}
     if(productsPromise)return productsPromise;
-    productsPromise=(async()=>{try{products=await (window.pmtGetPublicProducts?window.pmtGetPublicProducts():[]);window.PMT_PRODUCTS=products;return products;}catch(e){console.error('PMT cart product data failed to load',e);return[];}finally{productsPromise=null;}})();
-    return productsPromise;
+    productsPromise=(async()=>{try{products=await (window.pmtGetPublicProducts?window.pmtGetPublicProducts():[]);window.PMT_PRODUCTS=products;return products;}catch(e){console.error('PMT cart product data failed to load',e);return[];}finally{productsPromise=null;}})();return productsPromise;
   }
   async function addToCart(id,variantId='',quantity=1){let p=getProduct(id);if(!p){await ensureProducts();p=getProduct(id);}if(!p)return false;const v=Array.isArray(p.variants)?p.variants.find(x=>String(x.id)===String(variantId)):null;const stock=Math.max(0,Number(v?.stock??p.stock??0));if(stock<=0)return false;const item=find(id,v?String(v.id):'');const qty=Math.max(1,Math.min(99,Number(quantity)||1));if(item)item.qty=Math.min(Number(item.qty||0)+qty,stock);else cart.push({...p,variantId:v?String(v.id):'',variantName:v?.name||'',price:Number(v?.price??p.price??0),stock,qty:Math.min(qty,stock)});saveCart();renderCart();openCart();return true;}
   function changeQty(id,delta,variantId=''){const item=find(id,variantId);if(!item)return;item.qty=Number(item.qty||0)+Number(delta||0);if(item.qty<=0)removeFromCart(id,variantId);else{item.qty=Math.min(item.qty,Math.max(1,Number(item.stock)||99));saveCart();renderCart();}}
