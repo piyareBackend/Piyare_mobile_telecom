@@ -69,7 +69,9 @@ jobs:
           grep -q 'customer_token' public/assets/js/customer-account.js
           grep -q 'customer_token:customerToken' public/assets/js/app.js
           test -f public/account.html && test -f public/login.html && test -f public/signup.html && test -f public/forgot-password.html && test -f public/reset-password.html
-          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js public/assets/js/customer-account.js backend/*.gs; do node --check "$file"; done
+          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js public/assets/js/customer-account.js backend/*.gs; do
+            if [[ "$file" == *.gs ]]; then cp "$file" /tmp/pmt-syntax-check.js; node --check /tmp/pmt-syntax-check.js; else node --check "$file"; fi
+          done
           echo "Static architecture smoke tests passed"
       - name: Build Android APK
         shell: bash
