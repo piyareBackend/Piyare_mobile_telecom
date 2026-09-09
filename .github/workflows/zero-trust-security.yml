@@ -49,6 +49,6 @@ jobs:
           grep -q 'ztRefreshSession_' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
           grep -q 'ZT_ADMIN_ACTIONS' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
           grep -q 'SecureStore' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
-          ! grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|otp.?=.?123456|OTP.?123456' backend admin public/admin || true
+          if grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|otp.?=.?123456|OTP.?123456' backend admin public/admin; then echo 'Hardcoded/universal OTP pattern detected'; exit 1; fi
       - name: Android build
         run: gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
