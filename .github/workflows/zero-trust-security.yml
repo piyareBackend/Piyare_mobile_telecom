@@ -1,0 +1,54 @@
+name: Zero Trust Admin Security Checks
+on:
+  push:
+    branches: ['main','security/zero-trust-admin-otp']
+    paths:
+      - 'backend/**'
+      - 'admin/**'
+      - 'public/admin/**'
+      - 'assets/js/admin.js'
+      - 'assets/js/security.js'
+      - 'public/assets/js/security.js'
+      - '.github/workflows/zero-trust-security.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'admin/**'
+      - 'public/admin/**'
+      - 'assets/js/admin.js'
+      - 'assets/js/security.js'
+      - 'public/assets/js/security.js'
+      - '.github/workflows/zero-trust-security.yml'
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in assets/js/admin.js assets/js/security.js public/assets/js/security.js; do node --check "$f"; done
+          for f in backend/*.gs; do cp "$f" /tmp/pmt-security-syntax.js; node --check /tmp/pmt-security-syntax.js; done
+      - name: Zero-trust invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'otpRequired' admin/login.html
+          grep -q 'otpRequired' public/admin/login.html
+          grep -q 'ztCredentialLogin_' backend/ZeroTrustSecurity.gs
+          grep -q 'ztVerifyOtp_' backend/ZeroTrustSecurity.gs
+          grep -q 'AdminSessions' backend/ZeroTrustSecurity.gs
+          grep -q 'AdminAuditLog' backend/ZeroTrustSecurity.gs
+          grep -q 'STEP_UP_REQUIRED' backend/ZeroTrustSecurity.gs
+          grep -q 'ztRefreshSession_' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
+          grep -q 'ZT_ADMIN_ACTIONS' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
+          grep -q 'SecureStore' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
+          ! grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|otp.?=.?123456|OTP.?123456' backend admin public/admin || true
+      - name: Android build
+        run: gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
