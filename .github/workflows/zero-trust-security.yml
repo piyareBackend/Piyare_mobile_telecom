@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           for f in assets/js/admin.js public/assets/js/admin.js assets/js/security.js public/assets/js/security.js; do node --check "$f"; done
           for f in backend/*.gs; do cp "$f" /tmp/pmt-security-syntax.js; node --check /tmp/pmt-security-syntax.js; done
-      - name: Zero-trust invariants diagnostic
+      - name: Zero-trust invariants
         shell: bash
         run: |
           set -euo pipefail
@@ -45,10 +45,23 @@ jobs:
           grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'android:usesCleartextTraffic="false"' sms-bridge/app/src/main/AndroidManifest.xml
-          echo '--- exact literal hits ---'
-          grep -R -n --include='*.gs' --include='*.js' --include='*.html' -F '123456' backend admin public/admin || true
-          echo '--- master/universal token labels ---'
-          grep -R -n --include='*.gs' --include='*.js' --include='*.html' -E 'MASTER.?OTP|UNIVERSAL.?OTP' backend admin public/admin || true
+      - name: Forbidden OTP literal scan
+        shell: python
+        run: |
+          import pathlib, re
+          roots=(pathlib.Path('backend'), pathlib.Path('admin'), pathlib.Path('public/admin'))
+          bad=re.compile(r'(?:MASTER.?OTP|UNIVERSAL.?OTP|123456)', re.I)
+          hits=[]
+          for root in roots:
+              for path in root.rglob('*'):
+                  if path.suffix.lower() not in {'.gs','.js','.html'} or not path.is_file(): continue
+                  try: text=path.read_text(encoding='utf-8', errors='ignore')
+                  except OSError: continue
+                  for n,line in enumerate(text.splitlines(),1):
+                      if bad.search(line): hits.append(f'{path}:{n}:{line.strip()}')
+          if hits:
+              print('\n'.join(hits)); raise SystemExit('forbidden OTP literal detected')
+          print('Forbidden OTP literal scan passed')
       - name: Android build
         shell: bash
         run: |
