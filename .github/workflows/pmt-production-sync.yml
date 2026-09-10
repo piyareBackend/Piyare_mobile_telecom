@@ -1,19 +1,16 @@
 name: PMT Production Sync
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 env:
   NODE_VERSION: 22
-
 jobs:
   cloudflare:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +27,7 @@ jobs:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -euo pipefail
           test -n "$CF_TOKEN" || { echo "CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
           test -n "$CF_ACCOUNT" || { echo "CLOUDFLARE_ACCOUNT_ID secret is missing"; exit 1; }
       - name: Static architecture smoke tests
@@ -44,11 +42,11 @@ jobs:
           grep -q 'pmtResponse(response)' public/checkout.html
           grep -q 'result?.ok!==true' public/checkout.html
           grep -q 'order-confirmation.html' public/checkout.html
-          grep -q 'pmt-order-confirmation' public/checkout.html
+          grep -q 'pmt-order-confirmation' public/order-confirmation.html
           grep -q 'order_success' public/order-confirmation.html
           grep -q 'getElementById' public/track.html
           grep -q 'getUserMedia' public/assets/js/barcode-camera.js
-          grep -q "CACHE='pmt-admin-shell-v10'" public/admin/sw.js
+          grep -q "CACHE='pmt-admin-shell-v11'" public/admin/sw.js
           grep -q 'PMTBilling.complete' public/admin/billing.html
           grep -q 'PMTBilling.snapshot' public/admin/billing.html
           grep -q 'createPosBill' public/assets/js/unified-billing-engine.js
@@ -105,12 +103,13 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          for page in / /shop.html /product.html /checkout.html /order-confirmation.html /contact.html /repair.html /track.html /coupons.html /account.html /login.html /signup.html /forgot-password.html /reset-password.html /admin/billing.html; do
+          for page in / /shop.html /product.html /checkout.html /order-confirmation.html /contact.html /repair.html /track.html /coupons.html /account.html /login.html /signup.html /forgot-password.html /reset-password.html /admin/login.html /admin/billing.html; do
             curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
             test -s /tmp/pmt-page.html
           done
           curl --fail --silent --show-error --location --max-time 30 "$BASE/health" | grep -q '"ok":true'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/billing.html" | grep -q 'PMTBilling.complete'
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/login.html" | grep -q 'Admin.login('
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/admin.js" | grep -q 'adminLoginOtpVerify'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/unified-billing-engine.js" | grep -q 'createPosBill'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/billing-print.js" | grep -q 'window.print'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/pos.html" | grep -q '/admin/billing.html'
@@ -119,7 +118,7 @@ jobs:
           ! curl --fail --silent --show-error --location --max-time 30 "$BASE/product.html" | grep -q 'assets/js/product-fixes.js'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/checkout.html" | grep -q 'order-confirmation.html'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q 'getElementById'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js?v=10" | grep -q 'pmt-admin-shell-v10'
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js" | grep -q 'pmt-admin-shell-v11'
           curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/customer-account.js" | grep -q 'PMTCustomer'
           echo "Production asset smoke tests passed"
       - name: Upload APK artifacts
