@@ -64,7 +64,9 @@ jobs:
           grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'android:usesCleartextTraffic="false"' sms-bridge/app/src/main/AndroidManifest.xml
-          ! grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|["'"'']123456["'"'']' backend admin public/admin
+          echo '--- suspicious OTP literals (must be empty) ---'
+          grep -R -n --include='*.js' --include='*.html' --include='*.gs' --include='*.json' -E 'MASTER.?OTP|UNIVERSAL.?OTP|123456' backend admin public/admin || true
+          test -z "$(grep -R -n --include='*.js' --include='*.html' --include='*.gs' --include='*.json' -E 'MASTER.?OTP|UNIVERSAL.?OTP|123456' backend admin public/admin || true)"
           echo 'Zero-trust invariants passed'
       - name: Android build
         shell: bash
