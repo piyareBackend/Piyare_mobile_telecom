@@ -8,17 +8,20 @@ on:
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: 22
+
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -49,9 +52,18 @@ jobs:
           npm init -y
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
+      - name: Deploy current PR preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID secret is missing"; exit 1; }
+          npx --yes wrangler@4 deploy --config wrangler.jsonc --name pmt-pr-${{ github.event.pull_request.number || 'manual' }}
       - name: Browser smoke test PR preview
         env:
-          PMT_BASE_URL: https://security-zero-trust-admin-otp-piyare-mobile-telecom.sadab-notes-backup.workers.dev
+          PMT_BASE_URL: https://pmt-pr-${{ github.event.pull_request.number || 'manual' }}.sadab-notes-backup.workers.dev
         run: |
           set -euo pipefail
           cat > pmt-browser-smoke.mjs <<'EOF'
@@ -59,7 +71,7 @@ jobs:
           const base=process.env.PMT_BASE_URL.replace(/\/$/,'');const origin=new URL(base).origin;
           const pages=['/','/shop.html','/product.html','/checkout.html','/order-confirmation.html','/track.html','/account.html','/login.html','/signup.html','/forgot-password.html','/reset-password.html','/admin/login.html','/admin/billing.html'];
           const browser=await chromium.launch({headless:true});let failures=0;
-          for(const mobile of [false,true]){const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));for(const path of pages){try{errors.length=0;const r=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:30000});if(!r||!r.ok())throw Error(`HTTP ${r?.status()??'none'}`);if(new URL(page.url()).origin!==origin)throw Error(`Unexpected redirect ${page.url()}`);await page.waitForTimeout(300);if(!(await page.locator('body').innerText()).trim())throw Error('Blank body');if(errors.length)throw Error(`Page errors: ${errors.join(' | ')}`);if(path==='/admin/login.html'&&!(await page.locator('#login').count()))throw Error('Admin login form missing');console.log('PASS',mobile?'mobile':'desktop',path)}catch(e){failures++;console.error('FAIL',mobile?'mobile':'desktop',path,e.message);await page.screenshot({path:`failure-${mobile?'mobile':'desktop'}-${path.replaceAll('/','_')}.png`,fullPage:true}).catch(()=>{})}}await context.close()}
+          for(const mobile of [false,true]){const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));for(const path of pages){try{errors.length=0;const r=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:30000});if(!r||!r.ok())throw Error(`HTTP ${r?.status()??'none'}`);if(new URL(page.url()).origin!==origin)throw Error(`Unexpected redirect ${page.url()}`);await page.waitForTimeout(500);if(!(await page.locator('body').innerText()).trim())throw Error('Blank body');if(errors.length)throw Error(`Page errors: ${errors.join(' | ')}`);if(path==='/admin/login.html'&&!(await page.locator('#login').count()))throw Error('Admin login form missing');console.log('PASS',mobile?'mobile':'desktop',path)}catch(e){failures++;console.error('FAIL',mobile?'mobile':'desktop',path,e.message);await page.screenshot({path:`failure-${mobile?'mobile':'desktop'}-${path.replaceAll('/','_')}.png`,fullPage:true}).catch(()=>{})}}await context.close()}
           for(const [method,url,body] of [['GET',`${base}/api?action=orders`,null],['GET',`${base}/api?action=customers`,null],['POST',`${base}/api`,JSON.stringify({action:'dashboard'})]]){try{const r=await fetch(url,{method,headers:{'Content-Type':'text/plain','Accept':'application/json'},body});const d=await r.json();if(d?.ok===true)throw Error('protected admin API returned success anonymously');if(method==='POST'&&!['AUTH_REQUIRED','PERMISSION_DENIED','UNAUTHORIZED'].includes(String(d?.code||'').toUpperCase()))throw Error(`unexpected code ${d?.code||'none'}`);console.log('PASS anonymous API guard',method)}catch(e){failures++;console.error('FAIL anonymous API guard',method,url,e.message)}}
           const h=await fetch(base+'/health',{cache:'no-store'});const hd=await h.json().catch(()=>({}));if(!h.ok||hd.ok!==true){failures++;console.error('FAIL health',h.status,JSON.stringify(hd))}else console.log('PASS health',JSON.stringify(hd));await browser.close();if(failures)process.exit(1);
           EOF
