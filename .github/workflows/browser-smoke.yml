@@ -30,17 +30,19 @@ jobs:
         with:
           node-version: '22'
       - name: Install Playwright and Chromium
-        working-directory: /tmp/pmt-browser
         run: |
+          set -euo pipefail
           mkdir -p /tmp/pmt-browser
+          cd /tmp/pmt-browser
           npm init -y
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
       - name: Browser smoke test deployed site
-        working-directory: /tmp/pmt-browser
         env:
           PMT_BASE_URL: https://piyare-mobile-telecom.sadab-notes-backup.workers.dev
         run: |
+          set -euo pipefail
+          cd /tmp/pmt-browser
           cat > pmt-browser-smoke.mjs <<'EOF'
           import { chromium } from 'playwright';
           const base = process.env.PMT_BASE_URL.replace(/\/$/, '');
