@@ -58,12 +58,8 @@ jobs:
             }
             await context.close();
           }
-          const anonCases=[
-            ['GET',`${base}/api?action=orders`,null],
-            ['GET',`${base}/api?action=customers`,null],
-            ['POST',`${base}/api`,JSON.stringify({action:'dashboard'})]
-          ];
-          for(const [method,url,body] of anonCases){try{const r=await fetch(url,{method,headers:{'Content-Type':'text/plain','Accept':'application/json'},body});const d=await r.json();if(d?.ok===true)throw Error('Protected admin API returned success without a session');if(!['AUTH_REQUIRED','PERMISSION_DENIED','UNAUTHORIZED'].includes(String(d?.code||'').toUpperCase())&&method==='POST')throw Error(`Unexpected auth response code: ${d?.code||'none'}`);console.log('PASS anonymous API guard',method,url)}catch(e){failures++;console.error('FAIL anonymous API guard',method,url,e.message)}}
+          const anonCases=[['GET',`${base}/api?action=orders`,null],['GET',`${base}/api?action=customers`,null],['POST',`${base}/api`,JSON.stringify({action:'dashboard'})]];
+          for(const [method,url,body] of anonCases){try{const r=await fetch(url,{method,headers:{'Content-Type':'text/plain','Accept':'application/json'},body});const d=await r.json();if(d?.ok===true)throw Error('Protected admin API returned success without a session');if(method==='POST'&&!['AUTH_REQUIRED','PERMISSION_DENIED','UNAUTHORIZED'].includes(String(d?.code||'').toUpperCase()))throw Error(`Unexpected auth response code: ${d?.code||'none'}`);console.log('PASS anonymous API guard',method,url)}catch(e){failures++;console.error('FAIL anonymous API guard',method,url,e.message)}}
           const h=await fetch(base+'/health',{cache:'no-store'});const hd=await h.json().catch(()=>({}));if(!h.ok||hd.ok!==true){failures++;console.error('FAIL health',h.status,JSON.stringify(hd));}else console.log('PASS health',JSON.stringify(hd));
           await browser.close();
           if(failures)process.exit(1);
