@@ -5,19 +5,15 @@ on:
   pull_request:
     paths: ['public/**','assets/**','worker.js','wrangler.jsonc','.github/workflows/browser-smoke.yml']
   workflow_dispatch:
-  workflow_run:
-    workflows: ['PMT Production Sync']
-    types: [completed]
 permissions:
   contents: read
 jobs:
   browser:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with: {ref: ${{ github.event_name == 'workflow_run' && 'main' || github.sha }}}
+        with: {ref: ${{ github.sha }}}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Install Playwright
