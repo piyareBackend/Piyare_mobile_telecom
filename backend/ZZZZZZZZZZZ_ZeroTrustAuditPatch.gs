@@ -5,5 +5,3 @@ function ztSecurityAuditV2_(p,session,requestId){
   const rows=r.length>1?r.slice(1).reverse().filter(x=>{const t=new Date(x[0]).getTime();return(!event||String(x[1])===event)&&(!admin||String(x[2])===admin)&&(!success||String(x[5])===success)&&(!from||t>=from.getTime())&&(!to||t<to.getTime()+86400000)}).slice(0,300).map(x=>({timestamp:String(x[0]||''),eventType:String(x[1]||''),adminId:String(x[2]||''),username:String(x[3]||''),role:String(x[4]||''),success:String(x[5]||'')==='true',requestId:String(x[6]||''),ip:String(x[7]||''),metadata:String(x[8]||'')})):[];
   ztAuditEvent_('security_audit_view',session,true,requestId,{count:rows.length},'');return ztJson_({ok:true,data:rows});
 }
-var ZT_AUDIT_PREVIOUS_DOPOST=doPost;
-doPost=function(e){let b={};try{b=JSON.parse((e&&e.postData&&e.postData.contents)||'{}')}catch(_){return ZT_AUDIT_PREVIOUS_DOPOST(e)}if(String(b.action||'')==='securityAudit')return ztSecurityAuditV2_(b.payload||{},ztRefreshSession_(b.token),ztRequestId_());return ZT_AUDIT_PREVIOUS_DOPOST(e)};
