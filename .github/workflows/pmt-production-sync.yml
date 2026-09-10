@@ -103,23 +103,37 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
+          fetch_page() {
+            local path="$1"
+            curl --fail --silent --show-error --location --max-time 30 "$BASE$path" -o /tmp/pmt-check.html
+            test -s /tmp/pmt-check.html
+          }
+          check_contains() {
+            local path="$1" pattern="$2"
+            fetch_page "$path"
+            grep -q -- "$pattern" /tmp/pmt-check.html
+          }
+          check_absent() {
+            local path="$1" pattern="$2"
+            fetch_page "$path"
+            ! grep -q -- "$pattern" /tmp/pmt-check.html
+          }
           for page in / /shop.html /product.html /checkout.html /order-confirmation.html /contact.html /repair.html /track.html /coupons.html /account.html /login.html /signup.html /forgot-password.html /reset-password.html /admin/login.html /admin/billing.html; do
-            curl --fail --silent --show-error --location --max-time 30 "$BASE$page" >/tmp/pmt-page.html
-            test -s /tmp/pmt-page.html
+            fetch_page "$page"
           done
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/health" | grep -q '"ok":true'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/login.html" | grep -q 'Admin.login('
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/admin.js" | grep -q 'adminLoginOtpVerify'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/unified-billing-engine.js" | grep -q 'createPosBill'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/billing-print.js" | grep -q 'window.print'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/pos.html" | grep -q '/admin/billing.html'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'pmtShopToolbar'
-          ! curl --fail --silent --show-error --location --max-time 30 "$BASE/shop.html" | grep -q 'page-hero'
-          ! curl --fail --silent --show-error --location --max-time 30 "$BASE/product.html" | grep -q 'assets/js/product-fixes.js'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/checkout.html" | grep -q 'order-confirmation.html'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/track.html" | grep -q 'getElementById'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js" | grep -q 'pmt-admin-shell-v11'
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/customer-account.js" | grep -q 'PMTCustomer'
+          check_contains /health '"ok":true'
+          check_contains /admin/login.html 'Admin.login('
+          check_contains /assets/js/admin.js 'adminLoginOtpVerify'
+          check_contains /assets/js/unified-billing-engine.js 'createPosBill'
+          check_contains /assets/js/billing-print.js 'window.print'
+          check_contains /admin/pos.html '/admin/billing.html'
+          check_contains /shop.html 'pmtShopToolbar'
+          check_absent /shop.html 'page-hero'
+          check_absent /product.html 'assets/js/product-fixes.js'
+          check_contains /checkout.html 'order-confirmation.html'
+          check_contains /track.html 'getElementById'
+          check_contains /admin/sw.js 'pmt-admin-shell-v11'
+          check_contains /assets/js/customer-account.js 'PMTCustomer'
           echo "Production asset smoke tests passed"
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
