@@ -20,59 +20,50 @@ jobs:
           set -euo pipefail
           for f in assets/js/admin.js public/assets/js/admin.js assets/js/security.js public/assets/js/security.js; do node --check "$f"; done
           for f in backend/*.gs; do cp "$f" /tmp/pmt-security-syntax.js; node --check /tmp/pmt-security-syntax.js; done
-      - name: Zero-trust invariants
-        shell: bash
+      - name: Zero-trust source invariants
+        shell: python
         run: |
-          set -euo pipefail
-          grep -q 'otpRequired' admin/login.html
-          grep -q 'otpRequired' public/admin/login.html
-          grep -q 'adminLoginOtpVerify' assets/js/admin.js
-          grep -q 'adminLoginOtpVerify' public/assets/js/admin.js
-          grep -q 'adminBridgeLogin' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
-          grep -q 'adminBridgeOtpVerify' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
-          grep -q 'adminBridgeRefresh' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
-          ! grep -q 'action","adminLogin"' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
-          ! grep -q 'action","adminLogin"' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
-          grep -q 'ztCredentialLogin_' backend/ZeroTrustSecurity.gs
-          grep -q 'ztVerifyOtp_' backend/ZeroTrustSecurity.gs
-          grep -q 'AdminSessions' backend/ZeroTrustSecurity.gs
-          grep -q 'AdminAuditLog' backend/ZeroTrustSecurity.gs
-          grep -q 'STEP_UP_REQUIRED' backend/ZeroTrustSecurity.gs
-          grep -q 'ztRefreshSession_' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
-          grep -q 'ZT_ADMIN_ACTIONS' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
-          grep -q 'adminLoginOtpVerify' backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs
-          grep -q 'adminBridgeRefresh' backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs
-          grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
-          grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
+          from pathlib import Path
+          def read(p): return Path(p).read_text(encoding='utf-8')
+          files={
+            'admin_login':read('admin/login.html'),'public_login':read('public/admin/login.html'),
+            'admin_js':read('assets/js/admin.js'),'public_admin_js':read('public/assets/js/admin.js'),
+            'bridge_main':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java'),
+            'bridge_service':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java'),
+            'security':read('backend/ZeroTrustSecurity.gs'),'enforce':read('backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs'),
+            'router':read('backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs'),'admin_activity':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java'),
+          }
+          required={
+            'admin_login':['otpRequired'],'public_login':['otpRequired'],
+            'admin_js':['adminLoginOtpVerify'],'public_admin_js':['adminLoginOtpVerify'],
+            'bridge_main':['adminBridgeLogin','adminBridgeOtpVerify'],'bridge_service':['adminBridgeRefresh'],
+            'security':['ztCredentialLogin_','ztVerifyOtp_','AdminSessions','AdminAuditLog','STEP_UP_REQUIRED'],
+            'enforce':['ztRefreshSession_','ZT_ADMIN_ACTIONS'],'router':['adminLoginOtpVerify','adminBridgeRefresh'],
+            'admin_activity':['setSafeBrowsingEnabled(true)','MIXED_CONTENT_NEVER_ALLOW']}
+          for name,needles in required.items():
+              for needle in needles:
+                  if needle not in files[name]: raise SystemExit(f'missing invariant: {name}: {needle}')
+          if 'action","adminLogin"' in files['bridge_main'] or 'action","adminLogin"' in files['bridge_service']:
+              raise SystemExit('legacy immediate-token bridge login protocol remains')
+          import re
+          bad=re.compile(r'(?:MASTER.?OTP|UNIVERSAL.?OTP|123456)',re.I)
+          roots=(Path('backend'),Path('admin'),Path('public/admin'))
+          for root in roots:
+              for p in root.rglob('*'):
+                  if p.suffix.lower() not in {'.gs','.js','.html'} or not p.is_file(): continue
+                  text=p.read_text(encoding='utf-8',errors='ignore')
+                  for n,line in enumerate(text.splitlines(),1):
+                      if bad.search(line): raise SystemExit(f'forbidden OTP literal: {p}:{n}:{line.strip()}')
+          print('Zero-trust source invariants passed')
       - name: Android manifest security check
         shell: python
         run: |
           import xml.etree.ElementTree as ET
           ns='http://schemas.android.com/apk/res/android'
-          root=ET.parse('sms-bridge/app/src/main/AndroidManifest.xml').getroot()
-          app=root.find('application')
-          if app is None or app.get('{%s}usesCleartextTraffic' % ns) != 'false':
-              raise SystemExit('Android cleartext traffic must be explicitly disabled')
-          if app.get('{%s}allowBackup' % ns) == 'true':
-              raise SystemExit('Android backup must not be enabled for the bridge')
+          root=ET.parse('sms-bridge/app/src/main/AndroidManifest.xml').getroot();app=root.find('application')
+          if app is None or app.get('{%s}usesCleartextTraffic' % ns)!='false': raise SystemExit('Android cleartext traffic must be explicitly disabled')
+          if app.get('{%s}allowBackup' % ns)=='true': raise SystemExit('Android backup must not be enabled for the bridge')
           print('Android manifest security check passed')
-      - name: Forbidden OTP literal scan
-        shell: python
-        run: |
-          import pathlib, re
-          roots=(pathlib.Path('backend'), pathlib.Path('admin'), pathlib.Path('public/admin'))
-          bad=re.compile(r'(?:MASTER.?OTP|UNIVERSAL.?OTP|123456)', re.I)
-          hits=[]
-          for root in roots:
-              for path in root.rglob('*'):
-                  if path.suffix.lower() not in {'.gs','.js','.html'} or not path.is_file(): continue
-                  try: text=path.read_text(encoding='utf-8', errors='ignore')
-                  except OSError: continue
-                  for n,line in enumerate(text.splitlines(),1):
-                      if bad.search(line): hits.append(f'{path}:{n}:{line.strip()}')
-          if hits:
-              print('\n'.join(hits)); raise SystemExit('forbidden OTP literal detected')
-          print('Forbidden OTP literal scan passed')
       - name: Android build
         shell: bash
         run: |
