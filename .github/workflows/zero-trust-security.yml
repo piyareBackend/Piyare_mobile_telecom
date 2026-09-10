@@ -2,37 +2,18 @@ name: Zero Trust Admin Security Checks
 on:
   push:
     branches: ['main','security/zero-trust-admin-otp']
-    paths:
-      - 'backend/**'
-      - 'admin/**'
-      - 'public/admin/**'
-      - 'assets/js/admin.js'
-      - 'public/assets/js/admin.js'
-      - 'assets/js/security.js'
-      - 'public/assets/js/security.js'
-      - 'sms-bridge/**'
-      - '.github/workflows/zero-trust-security.yml'
   pull_request:
-    paths:
-      - 'backend/**'
-      - 'admin/**'
-      - 'public/admin/**'
-      - 'assets/js/admin.js'
-      - 'public/assets/js/admin.js'
-      - 'assets/js/security.js'
-      - 'public/assets/js/security.js'
-      - 'sms-bridge/**'
-      - '.github/workflows/zero-trust-security.yml'
+    paths: ['backend/**','admin/**','public/admin/**','assets/js/admin.js','public/assets/js/admin.js','assets/js/security.js','public/assets/js/security.js','sms-bridge/**','.github/workflows/zero-trust-security.yml']
 permissions:
   contents: read
 jobs:
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: {node-version: '22'}
       - name: Syntax checks
         shell: bash
         run: |
@@ -64,7 +45,11 @@ jobs:
           grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
           grep -q 'android:usesCleartextTraffic="false"' sms-bridge/app/src/main/AndroidManifest.xml
-          ! grep -R --line-number --include='*.gs' --include='*.js' --include='*.html' -E 'MASTER.?OTP|UNIVERSAL.?OTP|["'"']123456["'"']' backend admin public/admin
+          suspicious="$(grep -R -n --include='*.gs' --include='*.js' --include='*.html' -E 'MASTER.?OTP|UNIVERSAL.?OTP|['\"']123456['\"']' backend admin public/admin || true)"
+          if [ -n "$suspicious" ]; then
+            printf '%s\n' "$suspicious"
+            exit 1
+          fi
           echo 'Zero-trust invariants passed'
       - name: Android build
         shell: bash
