@@ -34,11 +34,11 @@ jobs:
             'router':read('backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs'),'admin_activity':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java'),
           }
           required={
-            'admin_login':['otpRequired'],'public_login':['otpRequired'],
-            'admin_js':['adminLoginOtpVerify'],'public_admin_js':['adminLoginOtpVerify'],
+            'admin_login':['Admin.login(','id="login"'],'public_login':['Admin.login(','id="login"'],
+            'admin_js':['adminLoginOtpVerify','ensureStepUp','otpDialog'],'public_admin_js':['adminLoginOtpVerify','ensureStepUp','otpDialog'],
             'bridge_main':['adminBridgeLogin','adminBridgeOtpVerify'],'bridge_service':['adminBridgeRefresh'],
             'security':['ztCredentialLogin_','ztVerifyOtp_','AdminSessions','AdminAuditLog','STEP_UP_REQUIRED'],
-            'enforce':['ztRefreshSession_','ZT_ADMIN_ACTIONS'],'router':['adminLoginOtpVerify','adminBridgeRefresh'],
+            'enforce':['ztRefreshSession_','ZT_ADMIN_ACTIONS'],'router':['adminLoginOtpVerify','adminBridgeRefresh','adminBridgeOtpVerify'],
             'admin_activity':['setSafeBrowsingEnabled(true)','MIXED_CONTENT_NEVER_ALLOW']}
           for name,needles in required.items():
               for needle in needles:
