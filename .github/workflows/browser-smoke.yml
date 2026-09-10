@@ -29,13 +29,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install Playwright Chromium
-        run: npx --yes playwright@1.55.0 install --with-deps chromium
+      - name: Install Playwright and Chromium
+        working-directory: /tmp/pmt-browser
+        run: |
+          mkdir -p /tmp/pmt-browser
+          npm init -y
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
       - name: Browser smoke test deployed site
+        working-directory: /tmp/pmt-browser
         env:
           PMT_BASE_URL: https://piyare-mobile-telecom.sadab-notes-backup.workers.dev
         run: |
-          cat > /tmp/pmt-browser-smoke.mjs <<'EOF'
+          cat > pmt-browser-smoke.mjs <<'EOF'
           import { chromium } from 'playwright';
           const base = process.env.PMT_BASE_URL.replace(/\/$/, '');
           const pages = ['/', '/shop.html', '/product.html', '/checkout.html', '/order-confirmation.html', '/track.html', '/account.html', '/login.html', '/signup.html', '/forgot-password.html', '/reset-password.html', '/admin/login.html', '/admin/billing.html'];
@@ -75,7 +81,7 @@ jobs:
               } catch (e) {
                 failures++;
                 console.error('FAIL', context.viewportSize(), path, e.message);
-                await page.screenshot({path:`/tmp/failure-${context.viewportSize().width}-${path.replaceAll('/','_')}.png`, fullPage:true}).catch(()=>{});
+                await page.screenshot({path:`failure-${context.viewportSize().width}-${path.replaceAll('/','_')}.png`, fullPage:true}).catch(()=>{});
               }
             }
             await context.close();
@@ -83,4 +89,4 @@ jobs:
           await browser.close();
           if (failures) process.exit(1);
           EOF
-          node /tmp/pmt-browser-smoke.mjs
+          node pmt-browser-smoke.mjs
