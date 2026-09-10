@@ -49,9 +49,9 @@ jobs:
           npm init -y
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Browser smoke test deployed site
+      - name: Browser smoke test PR preview
         env:
-          PMT_BASE_URL: https://piyare-mobile-telecom.sadab-notes-backup.workers.dev
+          PMT_BASE_URL: https://security-zero-trust-admin-otp-piyare-mobile-telecom.sadab-notes-backup.workers.dev
         run: |
           set -euo pipefail
           cat > pmt-browser-smoke.mjs <<'EOF'
