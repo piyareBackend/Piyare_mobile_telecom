@@ -1,7 +1,7 @@
 {
   "versionCode": 11,
   "versionName": "2.9",
-  "minimumVersionCode": 10,
+  "minimumVersionCode": 11,
   "releaseNotes": "Zero-trust administrator OTP enrollment, rotating bridge authorization, secure background re-authentication, and admin security flow fixes.",
   "updatePage": "https://github.com/piyareBackend/Piyare_mobile_telecom/actions/workflows/build-sms-bridge.yml"
 }
