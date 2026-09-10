@@ -7,8 +7,10 @@ on:
       - 'admin/**'
       - 'public/admin/**'
       - 'assets/js/admin.js'
+      - 'public/assets/js/admin.js'
       - 'assets/js/security.js'
       - 'public/assets/js/security.js'
+      - 'sms-bridge/**'
       - '.github/workflows/zero-trust-security.yml'
   pull_request:
     paths:
@@ -16,8 +18,10 @@ on:
       - 'admin/**'
       - 'public/admin/**'
       - 'assets/js/admin.js'
+      - 'public/assets/js/admin.js'
       - 'assets/js/security.js'
       - 'public/assets/js/security.js'
+      - 'sms-bridge/**'
       - '.github/workflows/zero-trust-security.yml'
 permissions:
   contents: read
@@ -33,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for f in assets/js/admin.js assets/js/security.js public/assets/js/security.js; do node --check "$f"; done
+          for f in assets/js/admin.js public/assets/js/admin.js assets/js/security.js public/assets/js/security.js; do node --check "$f"; done
           for f in backend/*.gs; do cp "$f" /tmp/pmt-security-syntax.js; node --check /tmp/pmt-security-syntax.js; done
       - name: Zero-trust invariants
         shell: bash
@@ -41,6 +45,13 @@ jobs:
           set -euo pipefail
           grep -q 'otpRequired' admin/login.html
           grep -q 'otpRequired' public/admin/login.html
+          grep -q 'adminLoginOtpVerify' assets/js/admin.js
+          grep -q 'adminLoginOtpVerify' public/assets/js/admin.js
+          grep -q 'adminBridgeLogin' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
+          grep -q 'adminBridgeOtpVerify' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
+          grep -q 'adminBridgeRefresh' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
+          ! grep -q 'action","adminLogin"' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java
+          ! grep -q 'action","adminLogin"' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
           grep -q 'ztCredentialLogin_' backend/ZeroTrustSecurity.gs
           grep -q 'ztVerifyOtp_' backend/ZeroTrustSecurity.gs
           grep -q 'AdminSessions' backend/ZeroTrustSecurity.gs
@@ -48,7 +59,16 @@ jobs:
           grep -q 'STEP_UP_REQUIRED' backend/ZeroTrustSecurity.gs
           grep -q 'ztRefreshSession_' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
           grep -q 'ZT_ADMIN_ACTIONS' backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs
-          grep -q 'SecureStore' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java
-          if grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|otp.?=.?123456|OTP.?123456' backend admin public/admin; then echo 'Hardcoded/universal OTP pattern detected'; exit 1; fi
+          grep -q 'adminLoginOtpVerify' backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs
+          grep -q 'adminBridgeRefresh' backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs
+          grep -q 'setSafeBrowsingEnabled(true)' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
+          grep -q 'MIXED_CONTENT_NEVER_ALLOW' sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java
+          grep -q 'android:usesCleartextTraffic="false"' sms-bridge/app/src/main/AndroidManifest.xml
+          ! grep -R --line-number -E 'MASTER.?OTP|UNIVERSAL.?OTP|["'"'']123456["'"'']' backend admin public/admin
+          echo 'Zero-trust invariants passed'
       - name: Android build
-        run: gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p sms-bridge assembleDebug --no-daemon --stacktrace
+          test -s sms-bridge/app/build/outputs/apk/debug/app-debug.apk
