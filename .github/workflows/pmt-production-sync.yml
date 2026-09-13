@@ -68,7 +68,7 @@ jobs:
           grep -q 'customer_token' public/assets/js/customer-account.js
           grep -q 'customer_token:customerToken' public/assets/js/app.js
           test -f public/account.html && test -f public/login.html && test -f public/signup.html && test -f public/forgot-password.html && test -f public/reset-password.html
-          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js public/assets/js/customer-account.js backend/*.gs; do
+          for file in public/assets/js/app.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/analytics.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js public/assets/js/customer-account.js backend/*.gs worker-entry.js; do
             if [[ "$file" == *.gs ]]; then cp "$file" /tmp/pmt-syntax-check.js; node --check /tmp/pmt-syntax-check.js; else node --check "$file"; fi
           done
           echo "Static architecture smoke tests passed"
@@ -100,7 +100,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+          PMT_SOURCE_COMMIT: ${{ github.sha }}
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc --var PMT_SOURCE_COMMIT:${PMT_SOURCE_COMMIT}
       - name: Verify production assets and critical flows
         shell: bash
         run: |
@@ -140,11 +141,16 @@ jobs:
           echo "Production asset smoke tests passed"
       - name: Verify source-to-production parity
         shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
           headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
-          printf '%s\n' "$headers" | grep -qi '^x-pmt-worker-version: 7\.4-performance' || { echo 'Worker version header mismatch'; exit 1; }
+          expected_version="$(sed -n "s/^const PMT_VERSION = '\''\([^'\'' ]*\)'\'';.*/\1/p" worker.js | head -n1)"
+          printf '%s\n' "$headers" | grep -qi "^x-pmt-worker-version: $expected_version" || { echo "Worker version header mismatch; expected $expected_version"; exit 1; }
+          deployed_commit="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="x-pmt-source-commit"{print $2}' | tr -d '\r' | tail -n1)"
+          test "$deployed_commit" = "$EXPECTED_COMMIT" || { echo "Worker source commit mismatch; expected $EXPECTED_COMMIT got $deployed_commit"; exit 1; }
           printf '%s\n' "$headers" | grep -qi '^content-security-policy:' || { echo 'CSP header missing'; exit 1; }
           curl --fail --silent --show-error --location --max-time 30 "$BASE/index.html" -o /tmp/pmt-live-index.html
           cmp -s public/index.html /tmp/pmt-live-index.html || { echo 'index.html parity mismatch'; exit 1; }
