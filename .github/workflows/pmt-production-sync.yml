@@ -147,7 +147,7 @@ jobs:
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
           headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
-          expected_version="$(sed -n "s/^const PMT_VERSION = '\''\([^'\'' ]*\)'\'';.*/\1/p" worker.js | head -n1)"
+          expected_version="$(node -e "const fs=require('fs');const s=fs.readFileSync('worker.js','utf8');const m=s.match(/const\\s+PMT_VERSION\\s*=\\s*['\"]([^'\"]+)['\"]/);if(!m)process.exit(1);process.stdout.write(m[1])")"
           printf '%s\n' "$headers" | grep -qi "^x-pmt-worker-version: $expected_version" || { echo "Worker version header mismatch; expected $expected_version"; exit 1; }
           deployed_commit="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="x-pmt-source-commit"{print $2}' | tr -d '\r' | tail -n1)"
           test "$deployed_commit" = "$EXPECTED_COMMIT" || { echo "Worker source commit mismatch; expected $EXPECTED_COMMIT got $deployed_commit"; exit 1; }
