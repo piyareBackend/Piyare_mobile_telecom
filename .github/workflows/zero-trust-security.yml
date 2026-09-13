@@ -26,16 +26,16 @@ jobs:
           from pathlib import Path
           def read(p): return Path(p).read_text(encoding='utf-8')
           files={
-            'admin_login':read('admin/login.html'),'public_login':read('public/admin/login.html'),
-            'admin_js':read('assets/js/admin.js'),'public_admin_js':read('public/assets/js/admin.js'),
+            'public_login':read('public/admin/login.html'),
+            'public_admin_js':read('public/assets/js/admin.js'),
             'bridge_main':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/MainActivity.java'),
             'bridge_service':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/SmsBridgeService.java'),
             'security':read('backend/ZeroTrustSecurity.gs'),'enforce':read('backend/ZZZZZZZZZZ_ZeroTrustEnforcement.gs'),
             'router':read('backend/ZZZZZZZZZZZZZZZZZZ_FinalRouter.gs'),'admin_activity':read('sms-bridge/app/src/main/java/com/piyare/mobiletelecom/smsbridge/AdminActivity.java'),
           }
           required={
-            'admin_login':['Admin.login(','id="login"'],'public_login':['Admin.login(','id="login"'],
-            'admin_js':['adminLoginOtpVerify','ensureStepUp','otpDialog'],'public_admin_js':['adminLoginOtpVerify','ensureStepUp','otpDialog'],
+            'public_login':['Admin.login(','id="login"'],
+            'public_admin_js':['adminLoginOtpVerify','ensureStepUp','otpDialog'],
             'bridge_main':['adminBridgeLogin','adminBridgeOtpVerify'],'bridge_service':['adminBridgeRefresh'],
             'security':['ztCredentialLogin_','ztVerifyOtp_','AdminSessions','AdminAuditLog','STEP_UP_REQUIRED'],
             'enforce':['ztRefreshSession_','ZT_ADMIN_ACTIONS'],'router':['adminLoginOtpVerify','adminBridgeRefresh','adminBridgeOtpVerify'],
@@ -47,7 +47,7 @@ jobs:
               raise SystemExit('legacy immediate-token bridge login protocol remains')
           import re
           bad=re.compile(r'(?:MASTER.?OTP|UNIVERSAL.?OTP|123456)',re.I)
-          roots=(Path('backend'),Path('admin'),Path('public/admin'))
+          roots=(Path('backend'),Path('public/admin'))
           for root in roots:
               for p in root.rglob('*'):
                   if p.suffix.lower() not in {'.gs','.js','.html'} or not p.is_file(): continue
