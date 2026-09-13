@@ -19,6 +19,7 @@ assert.match(wrangler, /"main"\s*:\s*"worker-entry\.js"/);
 assert.match(headers, /Content-Security-Policy:/);
 assert.match(remediation, /pbkdf2-sha256/);
 assert.match(remediation, /PMT_PASSWORD_KDF_ITERATIONS_\s*=\s*100000/);
+assert.match(remediation, /\\u0000\\u0000\\u0000\\u0001/);
 assert.match(remediation, /PMT_ORDER_TRANSITIONS_/);
 assert.match(remediation, /ORDER_TRANSITION_INVALID/);
 assert.match(remediation, /getRange\(i\+1,m\.status\+1\)/);
