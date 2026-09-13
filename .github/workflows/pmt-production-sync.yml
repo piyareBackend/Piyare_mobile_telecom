@@ -109,7 +109,7 @@ jobs:
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
           fetch_page() {
             local path="$1"
-            curl --fail --silent --show-error --location --max-time 30 "$BASE$path" -o /tmp/pmt-check.html
+            curl --fail --silent --show-error --location --max-time 30 --retry 4 --retry-delay 2 --retry-all-errors --retry-max-time 30 "$BASE$path" -o /tmp/pmt-check.html
             test -s /tmp/pmt-check.html
           }
           check_contains() {
@@ -146,21 +146,21 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          health="$(curl --fail --silent --show-error --location --max-time 30 "$BASE/health")"
+          health="$(curl --fail --silent --show-error --location --max-time 30 --retry 4 --retry-delay 2 --retry-all-errors --retry-max-time 30 "$BASE/health")"
           expected_version="$(node -e "const fs=require('fs');const s=fs.readFileSync('worker.js','utf8');const m=s.match(/const\\s+PMT_VERSION\\s*=\\s*['\"]([^'\"]+)['\"]/);if(!m)process.exit(1);process.stdout.write(m[1])")"
           deployed_version="$(printf '%s' "$health" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);process.stdout.write(String(x.version||''));})")"
           test "$deployed_version" = "$expected_version" || { echo "Worker version mismatch; expected $expected_version got $deployed_version"; exit 1; }
           deployed_commit="$(printf '%s' "$health" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);process.stdout.write(String(x.sourceCommit||''));})")"
           test "$deployed_commit" = "$EXPECTED_COMMIT" || { echo "Worker source commit mismatch; expected $EXPECTED_COMMIT got $deployed_commit"; exit 1; }
-          headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
+          headers="$(curl --fail --silent --show-error --location --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors --retry-max-time 30 -D - -o /dev/null "$BASE/")"
           printf '%s\n' "$headers" | grep -qi '^content-security-policy:' || { echo 'CSP header missing'; exit 1; }
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/index.html" -o /tmp/pmt-live-index.html
+          curl --fail --silent --show-error --location --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors --retry-max-time 30 "$BASE/index.html" -o /tmp/pmt-live-index.html
           cmp -s public/index.html /tmp/pmt-live-index.html || { echo 'index.html parity mismatch'; exit 1; }
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js" -o /tmp/pmt-live-sw.js
+          curl --fail --silent --show-error --location --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors --retry-max-time 30 "$BASE/admin/sw.js" -o /tmp/pmt-live-sw.js
           cmp -s public/admin/sw.js /tmp/pmt-live-sw.js || { echo 'admin service worker parity mismatch'; exit 1; }
-          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/customer-account.js" -o /tmp/pmt-live-customer.js
+          curl --fail --silent --show-error --location --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors --retry-max-time 30 "$BASE/assets/js/customer-account.js" -o /tmp/pmt-live-customer.js
           cmp -s public/assets/js/customer-account.js /tmp/pmt-live-customer.js || { echo 'customer account asset parity mismatch'; exit 1; }
-          status="$(curl --silent --show-error --location --max-time 30 -o /tmp/pmt-img.json -w '%{http_code}' "$BASE/img?src=https%3A%2F%2Fexample.com%2Fnot-an-image")"
+          status="$(curl --silent --show-error --location --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors --retry-max-time 30 -o /tmp/pmt-img.json -w '%{http_code}' "$BASE/img?src=https%3A%2F%2Fexample.com%2Fnot-an-image")"
           test "$status" = "403" || { echo "Unexpected /img disallowed-host status: $status"; cat /tmp/pmt-img.json; exit 1; }
           echo "Source-to-production parity and security-header checks passed"
       - name: Upload APK artifacts
