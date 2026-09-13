@@ -4,184 +4,22 @@
  * security/business invariants are enforced at the last server-side boundary.
  */
 const PMT_PASSWORD_KDF_ITERATIONS_=100000;
-const PMT_ORDER_TRANSITIONS_={
-  Pending:['Confirmed','Rejected','Cancelled'],
-  Confirmed:['Processing','Cancelled'],
-  Processing:['Shipped','Cancelled'],
-  Shipped:['Delivered'],
-  Delivered:['Completed'],
-  Rejected:[],
-  Cancelled:[],
-  Completed:[]
-};
-
+const PMT_ORDER_TRANSITIONS_={Pending:['Confirmed','Rejected','Cancelled'],Confirmed:['Processing','Cancelled'],Processing:['Shipped','Cancelled'],Shipped:['Delivered'],Delivered:['Completed'],Rejected:[],Cancelled:[],Completed:[]};
 function pmtBytes_(s){return Utilities.newBlob(String(s)).getBytes();}
 function pmtHmac_(value,key){return Utilities.computeHmacSha256Signature(pmtBytes_(value),pmtBytes_(key));}
 function pmtB64_(bytes){return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/,'');}
 function pmtSalt_(){return pmtB64_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,Utilities.getUuid()+'|'+Utilities.getUuid()+'|'+new Date().getTime(),Utilities.Charset.UTF_8));}
-function pmtPbkdf2_(password,salt,iterations){
-  const count=Math.max(10000,Math.min(150000,Number(iterations)||PMT_PASSWORD_KDF_ITERATIONS_));
-  let u=pmtHmac_(String(salt)+'\u0000\u0000\u0001',String(password));
-  let t=u.slice();
-  for(let i=1;i<count;i++){
-    u=pmtHmac_(u,String(password));
-    for(let j=0;j<t.length;j++){
-      let v=(t[j]^u[j]);
-      if(v>127)v-=256;
-      if(v<-128)v+=256;
-      t[j]=v;
-    }
-  }
-  return pmtB64_(t);
-}
+function pmtPbkdf2_(password,salt,iterations){const count=Math.max(10000,Math.min(150000,Number(iterations)||PMT_PASSWORD_KDF_ITERATIONS_));let u=pmtHmac_(String(salt)+'\u0000\u0000\u0001',String(password)),t=u.slice();for(let i=1;i<count;i++){u=pmtHmac_(u,String(password));for(let j=0;j<t.length;j++){let v=t[j]^u[j];if(v>127)v-=256;if(v<-128)v+=256;t[j]=v;}}return pmtB64_(t);}
 function pmtPasswordHash_(password){const salt=pmtSalt_();return 'pbkdf2-sha256$'+PMT_PASSWORD_KDF_ITERATIONS_+'$'+salt+'$'+pmtPbkdf2_(String(password),salt,PMT_PASSWORD_KDF_ITERATIONS_);}
-function pmtPasswordVerify_(password,stored){
-  const s=String(stored||'');
-  if(s.indexOf('pbkdf2-sha256$')!==0)return {valid:false,modern:false};
-  const parts=s.split('$');
-  if(parts.length!==4)return {valid:false,modern:false};
-  const iterations=Number(parts[1]),salt=parts[2],expected=parts[3];
-  if(!Number.isFinite(iterations)||iterations<10000||iterations>150000||!salt||!expected)return {valid:false,modern:true};
-  const actual=pmtPbkdf2_(String(password),salt,iterations);
-  return {valid:pmtSafeEqual_(actual,expected),modern:true,iterations};
-}
+function pmtPasswordVerify_(password,stored){const s=String(stored||'');if(s.indexOf('pbkdf2-sha256$')!==0)return {valid:false,modern:false};const parts=s.split('$');if(parts.length!==4)return {valid:false,modern:false};const iterations=Number(parts[1]),salt=parts[2],expected=parts[3];if(!Number.isFinite(iterations)||iterations<10000||iterations>150000||!salt||!expected)return {valid:false,modern:true};return {valid:pmtSafeEqual_(pmtPbkdf2_(String(password),salt,iterations),expected),modern:true,iterations};}
 function pmtSafeEqual_(a,b){a=String(a||'');b=String(b||'');if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
-function pmtVerifyPassword_(password,stored,salt){
-  const s=String(stored||'');
-  if(s.indexOf('pbkdf2-sha256$')===0)return pmtPasswordVerify_(password,s);
-  const legacy=hash_(password,salt);
-  return {valid:pmtSafeEqual_(legacy,s),modern:false};
-}
+function pmtVerifyPassword_(password,stored,salt){const s=String(stored||'');if(s.indexOf('pbkdf2-sha256$')===0)return pmtPasswordVerify_(password,s);return {valid:pmtSafeEqual_(hash_(password,salt),s),modern:false};}
 function pmtMigratePassword_(sheet,row,password){sheet.getRange(row,4).setValue(pmtPasswordHash_(password));}
-
-function pmtSecureCredentialLogin_(username,password,requestId,bridge){
-  username=clean_(username,80);password=String(password||'');
-  if(!username||password.length<10)return ztJson_({ok:false,message:'Invalid credentials'});
-  const c=CacheService.getScriptCache(),prefix=bridge?'zt_bridge_login_fail_':'zt_login_fail_',key=prefix+ztB64_(username).slice(0,80),attempts=Number(c.get(key)||0);
-  if(attempts>=ZT_CFG.MAX_LOGIN_ATTEMPTS)return ztJson_({ok:false,message:'Too many attempts. Try again later.',code:'LOGIN_RATE_LIMIT'});
-  const s=pmtAccessEnsureSchema_(),r=s.getDataRange().getValues();let user=null,rowIndex=-1;
-  for(let i=1;i<r.length;i++)if(String(r[i][1]).trim().toLowerCase()===username.toLowerCase()){user=r[i];rowIndex=i+1;break;}
-  const verified=user&&String(user[6]||'Active')==='Active'?pmtVerifyPassword_(password,user[3],user[2]):{valid:false,modern:false};
-  if(!user||rowIndex<0||String(user[6]||'Active')!=='Active'||!verified.valid){
-    c.put(key,String(attempts+1),ZT_CFG.LOGIN_WINDOW_SECONDS);
-    ztAuditEvent_(bridge?'bridge_login_failed':'login_failed',null,false,requestId,{username},'');
-    return ztJson_({ok:false,message:'Invalid credentials'});
-  }
-  if(!verified.modern)pmtMigratePassword_(s,rowIndex,password);
-  c.remove(key);
-  const identity=ztIdentity_(String(user[0]));
-  if(!identity)return ztJson_({ok:false,message:'Administrator is no longer active.',code:'ADMIN_INACTIVE'});
-  if(bridge){
-    const ch=ztBridgeChallenge_(identity,requestId);
-    return ch.ok?ztJson_({ok:true,otpRequired:true,challengeId:ch.challengeId,expiresIn:ch.expiresIn,resendIn:ch.resendIn}):ztJson_({ok:false,message:ch.message,code:ch.code});
-  }
-  const challenge=ztOtpChallenge_(identity,'login',requestId);
-  if(!challenge.ok)return ztJson_({ok:false,message:challenge.message,code:challenge.code});
-  return ztJson_({ok:true,otpRequired:true,challengeId:challenge.challengeId,expiresIn:challenge.expiresIn,resendIn:challenge.resendIn,user:{name:identity.name,username:identity.username,role:identity.role}});
-}
-
-var PMT_BASE_CREATE_USER_REMEDIATION_=pmtCreateUser_;
-pmtCreateUser_=function(p,session){
-  const username=clean_(p&&p.username,80),password=String(p&&p.password||''),name=clean_(p&&p.name,80),role=String(p&&p.role||'Support'),avatar=clean_(p&&p.avatarUrl,1200);
-  if(!session||String(session.role)!=='Owner')return forbidden_();
-  if(!username||password.length<10||!name||roleRank_(role)<10||roleRank_(role)>roleRank_(session.role))return J({ok:false,message:'Invalid user data — password needs 10+ characters and role cannot exceed your own.'});
-  const s=pmtAccessEnsureSchema_(),r=s.getDataRange().getValues();
-  for(let i=1;i<r.length;i++)if(String(r[i][1]).toLowerCase()===username.toLowerCase())return J({ok:false,message:'Username already exists'});
-  const id=Utilities.getUuid(),permsBase=Array.isArray(p&&p.permissions)?p.permissions.map(String):pmtRolePermissions_(role),catalog=Object.keys(PMT_PERMISSION_CATALOG);
-  let perms=permsBase.filter((x,i,a)=>catalog.indexOf(x)>=0&&a.indexOf(x)===i);if(!perms.length)perms=pmtRolePermissions_(role);
-  s.appendRow([id,username,pmtSalt_(),pmtPasswordHash_(password),name,role,'Active',now_(),JSON.stringify(perms),avatar]);
-  pmtLogStaffActivity_(session,'staff_create',username+' | '+role);
-  return J({ok:true,id,permissions:perms,avatarUrl:avatar,passwordKdf:'pbkdf2-sha256'});
-};
-
-var PMT_BASE_ZT_CREDENTIAL_LOGIN_REMEDIATION_=ztCredentialLogin_;
-ztCredentialLogin_=function(username,password,requestId){return pmtSecureCredentialLogin_(username,password,requestId,false);};
-var PMT_BASE_ZT_BRIDGE_CREDENTIAL_LOGIN_REMEDIATION_=ztBridgeCredentialLogin_;
-ztBridgeCredentialLogin_=function(username,password,requestId){return pmtSecureCredentialLogin_(username,password,requestId,true);};
-
-var PMT_BASE_CHANGE_ORDER_STATUS_REMEDIATION_=changeOrderStatus_;
-function pmtSecureChangeOrderStatus_(id,newStatus,opts){
-  opts=opts||{};
-  const os=S('Orders'),ps=S('Products');
-  if(!os||!ps)return {ok:false,message:'Service unavailable'};
-  const allowed=['Pending','Confirmed','Rejected','Processing','Shipped','Delivered','Cancelled','Completed'];
-  if(!id||allowed.indexOf(String(newStatus))<0)return {ok:false,message:'Invalid status update'};
-  const lock=LockService.getScriptLock();
-  try{
-    lock.waitLock(10000);ensureOrderSchema_(os);
-    const rows=os.getDataRange().getValues();let rowIndex=-1;
-    for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(id)){rowIndex=i+1;break;}
-    if(rowIndex<0)return {ok:false,message:'Order not found'};
-    const row=rows[rowIndex-1],currentStatus=String(row[7]||'Pending'),storedToken=String(row[8]||''),next=String(newStatus);
-    if(opts.requireToken){
-      if(currentStatus!=='Pending')return {ok:false,alreadyProcessed:true,message:'This order was already processed. Current status: '+currentStatus};
-      if(!storedToken||storedToken!==String(opts.providedToken||''))return {ok:false,message:'This order link is invalid or has expired.'};
-    }
-    if(currentStatus===next)return {ok:false,message:'Order is already '+next,code:'ORDER_NOOP'};
-    const transitions=PMT_ORDER_TRANSITIONS_[currentStatus]||[];
-    if(transitions.indexOf(next)<0)return {ok:false,message:'Invalid order status transition',code:'ORDER_TRANSITION_INVALID',from:currentStatus,to:next};
-    const willRestoreStock=STOCK_RESTORE_STATUSES.indexOf(next)>=0&&STOCK_RESTORE_STATUSES.indexOf(currentStatus)<0;
-    if(willRestoreStock){
-      let items=[];try{items=JSON.parse(String(row[4]||'[]'));}catch(e){return {ok:false,message:'Order data error — could not read items.'};}
-      const restored=restoreStockForOrder_(ps,items);
-      if(restored&&restored.ok===false)return restored;
-    }
-    os.getRange(rowIndex,8).setValue(next);
-    os.getRange(rowIndex,9).setValue('');
-    clearCache_();
-    auditSafe_('order_status_change',String(id)+' '+currentStatus+' -> '+next);
-    notification_('order_status','Order '+String(id)+' status: '+next);
-    return {ok:true,id:String(id),status:next,stockRestored:willRestoreStock};
-  }catch(err){
-    auditSafe_('order_status_error',String(err&&err.message||err));
-    return {ok:false,message:'Server error'};
-  }finally{try{lock.releaseLock();}catch(_){} }
-}
-var PMT_BASE_UPDATE_ORDER_REMEDIATION_=updateOrder_;
-updateOrder_=function(p,session){
-  const id=clean_(p&&p.id,120),status=String(p&&p.status||'');
-  const allowed=['Pending','Confirmed','Rejected','Processing','Shipped','Delivered','Cancelled','Completed'];
-  if(!id||allowed.indexOf(status)<0)return J({ok:false,message:'Invalid status update'});
-  const result=pmtSecureChangeOrderStatus_(id,status,{requireToken:false});
-  return J(result.ok?{ok:true,id:result.id,status:result.status,stockRestored:result.stockRestored}:{ok:false,message:result.message||'Update failed',code:result.code||'ORDER_UPDATE_FAILED',from:result.from,to:result.to});
-};
-changeOrderStatus_=function(id,newStatus,opts){return pmtSecureChangeOrderStatus_(id,newStatus,opts||{});};
-
-var PMT_BASE_REVIEWS_REMEDIATION_=reviews_;
-reviews_=function(){
-  const s=S('Reviews');if(!s)return J({ok:true,data:[]});
-  const r=s.getDataRange().getValues();
-  const data=r.length>1?r.slice(1).map(x=>({id:String(x[0]||''),name:String(x[1]||''),message:String(x[2]||''),rating:Number(x[3]||0),status:String(x[4]||'Pending'),date:String(x[5]||''),productId:String(x[6]||'')})):[];
-  return J({ok:true,data});
-};
-var PMT_BASE_UPDATE_REVIEW_REMEDIATION_=updateReview_;
-updateReview_=function(p,session){
-  const id=clean_(p&&p.id,120),status=p&&p.status!=null?String(p.status):null;
-  if(status==null)return PMT_BASE_UPDATE_REVIEW_REMEDIATION_(p,session);
-  const s=S('Reviews');if(!s)return J({ok:false,message:'Reviews unavailable'});
-  const r=s.getDataRange().getValues();
-  for(let i=1;i<r.length;i++)if(String(r[i][0])===id){
-    if(['Pending','Approved','Rejected'].indexOf(status)<0)return J({ok:false,message:'Invalid review status',code:'REVIEW_STATUS_INVALID'});
-    s.getRange(i+1,5).setValue(status);auditSafe_('review_update',id+' -> '+status);return J({ok:true,id,status});
-  }
-  return J({ok:false,message:'Review not found'});
-};
-
-var PMT_BASE_UPLOAD_IMAGE_REMEDIATION_=uploadImage_;
-uploadImage_=function(b,session){
-  const configured=String(P('PMT_PUBLIC_MEDIA_FOLDER_ID')||'').trim();
-  if(!configured)return J({ok:false,error:'Public media storage is not configured',code:'PUBLIC_MEDIA_STORAGE_NOT_CONFIGURED'});
-  const data=String(b&&b.base64||'').replace(/^data:[^;]+;base64,/i,'').trim();
-  const mime=String(b&&b.mime||'').toLowerCase();
-  if(!data)return J({ok:false,error:'Image data is required',code:'IMAGE_DATA_REQUIRED'});
-  if(['image/jpeg','image/png','image/webp'].indexOf(mime)<0)return J({ok:false,error:'Only JPG, PNG and WebP are allowed',code:'IMAGE_TYPE_INVALID'});
-  let bytes;try{bytes=Utilities.base64Decode(data);}catch(e){return J({ok:false,error:'Invalid image data',code:'IMAGE_DATA_INVALID'});}
-  if(bytes.length>CFG.MAX_UPLOAD_BYTES)return J({ok:false,error:'Image exceeds 5 MB',code:'IMAGE_TOO_LARGE'});
-  const folder=DriveApp.getFolderById(configured);
-  const safe=clean_(b.filename||'image',120).replace(/[^a-z0-9._-]/gi,'_')||'image';
-  const file=folder.createFile(Utilities.newBlob(bytes,mime,Utilities.getUuid().replace(/-/g,'').slice(0,12)+'-'+safe));
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
-  const id=file.getId(),url='https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w1600';
-  audit_('media_upload',id+' | public-media');
-  return J({ok:true,id,url,thumbnailUrl:url,driveUrl:'https://drive.google.com/uc?export=view&id='+encodeURIComponent(id),visibility:'public-media'});
-};
+function pmtSecureCredentialLogin_(username,password,requestId,bridge){username=clean_(username,80);password=String(password||'');if(!username||password.length<10)return ztJson_({ok:false,message:'Invalid credentials'});const c=CacheService.getScriptCache(),prefix=bridge?'zt_bridge_login_fail_':'zt_login_fail_',key=prefix+ztB64_(username).slice(0,80),attempts=Number(c.get(key)||0);if(attempts>=ZT_CFG.MAX_LOGIN_ATTEMPTS)return ztJson_({ok:false,message:'Too many attempts. Try again later.',code:'LOGIN_RATE_LIMIT'});const s=pmtAccessEnsureSchema_(),r=s.getDataRange().getValues();let user=null,rowIndex=-1;for(let i=1;i<r.length;i++)if(String(r[i][1]).trim().toLowerCase()===username.toLowerCase()){user=r[i];rowIndex=i+1;break}const verified=user&&String(user[6]||'Active')==='Active'?pmtVerifyPassword_(password,user[3],user[2]):{valid:false,modern:false};if(!user||rowIndex<0||String(user[6]||'Active')!=='Active'||!verified.valid){c.put(key,String(attempts+1),ZT_CFG.LOGIN_WINDOW_SECONDS);ztAuditEvent_(bridge?'bridge_login_failed':'login_failed',null,false,requestId,{username},'');return ztJson_({ok:false,message:'Invalid credentials'});}if(!verified.modern)pmtMigratePassword_(s,rowIndex,password);c.remove(key);const identity=ztIdentity_(String(user[0]));if(!identity)return ztJson_({ok:false,message:'Administrator is no longer active.',code:'ADMIN_INACTIVE'});if(bridge){const ch=ztBridgeChallenge_(identity,requestId);return ch.ok?ztJson_({ok:true,otpRequired:true,challengeId:ch.challengeId,expiresIn:ch.expiresIn,resendIn:ch.resendIn}):ztJson_({ok:false,message:ch.message,code:ch.code});}const challenge=ztOtpChallenge_(identity,'login',requestId);if(!challenge.ok)return ztJson_({ok:false,message:challenge.message,code:challenge.code});return ztJson_({ok:true,otpRequired:true,challengeId:challenge.challengeId,expiresIn:challenge.expiresIn,resendIn:challenge.resendIn,user:{name:identity.name,username:identity.username,role:identity.role}});}
+var PMT_BASE_CREATE_USER_REMEDIATION_=pmtCreateUser_;pmtCreateUser_=function(p,session){const username=clean_(p&&p.username,80),password=String(p&&p.password||''),name=clean_(p&&p.name,80),role=String(p&&p.role||'Support'),avatar=clean_(p&&p.avatarUrl,1200);if(!session||String(session.role)!=='Owner')return forbidden_();if(!username||password.length<10||!name||roleRank_(role)<10||roleRank_(role)>roleRank_(session.role))return J({ok:false,message:'Invalid user data — password needs 10+ characters and role cannot exceed your own.'});const s=pmtAccessEnsureSchema_(),r=s.getDataRange().getValues();for(let i=1;i<r.length;i++)if(String(r[i][1]).toLowerCase()===username.toLowerCase())return J({ok:false,message:'Username already exists'});const id=Utilities.getUuid(),permsBase=Array.isArray(p&&p.permissions)?p.permissions.map(String):pmtRolePermissions_(role),catalog=Object.keys(PMT_PERMISSION_CATALOG);let perms=permsBase.filter((x,i,a)=>catalog.indexOf(x)>=0&&a.indexOf(x)===i);if(!perms.length)perms=pmtRolePermissions_(role);s.appendRow([id,username,pmtSalt_(),pmtPasswordHash_(password),name,role,'Active',now_(),JSON.stringify(perms),avatar]);pmtLogStaffActivity_(session,'staff_create',username+' | '+role);return J({ok:true,id,permissions:perms,avatarUrl:avatar,passwordKdf:'pbkdf2-sha256'});};
+var PMT_BASE_ZT_CREDENTIAL_LOGIN_REMEDIATION_=ztCredentialLogin_;ztCredentialLogin_=function(username,password,requestId){return pmtSecureCredentialLogin_(username,password,requestId,false);};var PMT_BASE_ZT_BRIDGE_CREDENTIAL_LOGIN_REMEDIATION_=ztBridgeCredentialLogin_;ztBridgeCredentialLogin_=function(username,password,requestId){return pmtSecureCredentialLogin_(username,password,requestId,true);};
+var PMT_BASE_CHANGE_ORDER_STATUS_REMEDIATION_=changeOrderStatus_;function pmtSecureChangeOrderStatus_(id,newStatus,opts){opts=opts||{};const os=S('Orders'),ps=S('Products');if(!os||!ps)return {ok:false,message:'Service unavailable'};const allowed=['Pending','Confirmed','Rejected','Processing','Shipped','Delivered','Cancelled','Completed'];if(!id||allowed.indexOf(String(newStatus))<0)return {ok:false,message:'Invalid status update'};const lock=LockService.getScriptLock();try{lock.waitLock(10000);ensureOrderSchema_(os);const rows=os.getDataRange().getValues();let rowIndex=-1;for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(id)){rowIndex=i+1;break}if(rowIndex<0)return {ok:false,message:'Order not found'};const row=rows[rowIndex-1],currentStatus=String(row[7]||'Pending'),storedToken=String(row[8]||''),next=String(newStatus);if(opts.requireToken){if(currentStatus!=='Pending')return {ok:false,alreadyProcessed:true,message:'This order was already processed. Current status: '+currentStatus};if(!storedToken||storedToken!==String(opts.providedToken||''))return {ok:false,message:'This order link is invalid or has expired.'};}if(currentStatus===next)return {ok:false,message:'Order is already '+next,code:'ORDER_NOOP'};const transitions=PMT_ORDER_TRANSITIONS_[currentStatus]||[];if(transitions.indexOf(next)<0)return {ok:false,message:'Invalid order status transition',code:'ORDER_TRANSITION_INVALID',from:currentStatus,to:next};const willRestoreStock=STOCK_RESTORE_STATUSES.indexOf(next)>=0&&STOCK_RESTORE_STATUSES.indexOf(currentStatus)<0;if(willRestoreStock){let items=[];try{items=JSON.parse(String(row[4]||'[]'));}catch(e){return {ok:false,message:'Order data error — could not read items.'};}const restored=restoreStockForOrder_(ps,items);if(restored&&restored.ok===false)return restored;}os.getRange(rowIndex,8).setValue(next);os.getRange(rowIndex,9).setValue('');clearCache_();auditSafe_('order_status_change',String(id)+' '+currentStatus+' -> '+next);notification_('order_status','Order '+String(id)+' status: '+next);return {ok:true,id:String(id),status:next,stockRestored:willRestoreStock};}catch(err){auditSafe_('order_status_error',String(err&&err.message||err));return {ok:false,message:'Server error'};}finally{try{lock.releaseLock();}catch(_){}}}
+var PMT_BASE_UPDATE_ORDER_REMEDIATION_=updateOrder_;updateOrder_=function(p,session){const id=clean_(p&&p.id,120),status=String(p&&p.status||''),allowed=['Pending','Confirmed','Rejected','Processing','Shipped','Delivered','Cancelled','Completed'];if(!id||allowed.indexOf(status)<0)return J({ok:false,message:'Invalid status update'});const result=pmtSecureChangeOrderStatus_(id,status,{requireToken:false});if(result.ok&&status==='Confirmed'&&typeof pmtCustomerRewardOrderEarn_==='function')try{pmtCustomerRewardOrderEarn_(id)}catch(_){}return J(result.ok?{ok:true,id:result.id,status:result.status,stockRestored:result.stockRestored}:{ok:false,message:result.message||'Update failed',code:result.code||'ORDER_UPDATE_FAILED',from:result.from,to:result.to});};changeOrderStatus_=function(id,newStatus,opts){return pmtSecureChangeOrderStatus_(id,newStatus,opts||{});};
+function pmtReviewSchema_(s){const width=Math.max(7,s.getLastColumn()||7),h=s.getRange(1,1,1,width).getValues()[0],normalize=v=>String(v||'').trim().toLowerCase(),find=names=>{for(let i=0;i<h.length;i++)if(names.indexOf(normalize(h[i]))>=0)return i;return -1};let id=find(['id','review_id']),name=find(['name','customer','customer_name']),message=find(['message','text','review','comment']),rating=find(['rating','stars','score']),status=find(['status','review_status']);if(id<0){id=0;h[id]=h[id]||'id';}if(name<0){name=1;h[name]=h[name]||'name';}if(message<0){message=2;h[message]=h[message]||'message';}if(rating<0){rating=3;h[rating]=h[rating]||'rating';}if(status<0){status=h.length;h.push('status');}s.getRange(1,1,1,h.length).setValues([h]);return {id,name,message,rating,status,headers:h};}
+var PMT_BASE_REVIEWS_REMEDIATION_=reviews_;reviews_=function(){const s=S('Reviews');if(!s)return J({ok:true,data:[]});const m=pmtReviewSchema_(s),r=s.getDataRange().getValues();const data=r.length>1?r.slice(1).map(x=>({id:String(x[m.id]||''),name:String(x[m.name]||''),message:String(x[m.message]||''),rating:Number(x[m.rating]||0),status:String(x[m.status]||'Pending'),date:String(x[5]||''),productId:String(x[6]||'')})):[];return J({ok:true,data});};var PMT_BASE_UPDATE_REVIEW_REMEDIATION_=updateReview_;updateReview_=function(p,session){const id=clean_(p&&p.id,120),status=p&&p.status!=null?String(p.status):null;if(status==null)return PMT_BASE_UPDATE_REVIEW_REMEDIATION_(p,session);if(['Pending','Approved','Hidden','Rejected'].indexOf(status)<0)return J({ok:false,message:'Invalid review status',code:'REVIEW_STATUS_INVALID'});const s=S('Reviews');if(!s)return J({ok:false,message:'Reviews unavailable'});const m=pmtReviewSchema_(s),r=s.getDataRange().getValues();for(let i=1;i<r.length;i++)if(String(r[i][m.id])===id){if(p.rating!=null){const rating=Math.max(1,Math.min(5,Number(p.rating)||0));if(!rating)return J({ok:false,message:'Invalid review rating',code:'REVIEW_RATING_INVALID'});s.getRange(i+1,m.rating+1).setValue(rating);}s.getRange(i+1,m.status+1).setValue(status);auditSafe_('review_update',id+' -> '+status);return J({ok:true,id,status});}return J({ok:false,message:'Review not found'});};
+var PMT_BASE_UPLOAD_IMAGE_REMEDIATION_=uploadImage_;uploadImage_=function(b,session){const configured=String(P('PMT_PUBLIC_MEDIA_FOLDER_ID')||P('PMT_MEDIA_FOLDER_ID')||'').trim(),visibility=String(P('PMT_PUBLIC_MEDIA_FOLDER_VISIBILITY')||'public').trim().toLowerCase();if(!configured||visibility!=='public')return J({ok:false,error:'Public media storage is not configured for public-only uploads',code:'PUBLIC_MEDIA_STORAGE_NOT_CONFIGURED'});const data=String(b&&b.base64||'').replace(/^data:[^;]+;base64,/i,'').trim(),mime=String(b&&b.mime||'').toLowerCase();if(!data)return J({ok:false,error:'Image data is required',code:'IMAGE_DATA_REQUIRED'});if(['image/jpeg','image/png','image/webp'].indexOf(mime)<0)return J({ok:false,error:'Only JPG, PNG and WebP are allowed',code:'IMAGE_TYPE_INVALID'});let bytes;try{bytes=Utilities.base64Decode(data);}catch(e){return J({ok:false,error:'Invalid image data',code:'IMAGE_DATA_INVALID'});}if(bytes.length>CFG.MAX_UPLOAD_BYTES)return J({ok:false,error:'Image exceeds 5 MB',code:'IMAGE_TOO_LARGE'});const folder=DriveApp.getFolderById(configured),safe=clean_(b.filename||'image',120).replace(/[^a-z0-9._-]/gi,'_')||'image',file=folder.createFile(Utilities.newBlob(bytes,mime,Utilities.getUuid().replace(/-/g,'').slice(0,12)+'-'+safe));file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);const id=file.getId(),url='https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w1600';audit_('media_upload',id+' | public-media-folder');return J({ok:true,id,url,thumbnailUrl:url,driveUrl:'https://drive.google.com/uc?export=view&id='+encodeURIComponent(id),visibility:'public-media'});};
