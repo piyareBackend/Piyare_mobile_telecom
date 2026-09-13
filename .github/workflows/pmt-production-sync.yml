@@ -34,6 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test ! -d admin
           test ! -e public/assets/js/commerce-fixes.js
           test ! -e public/assets/js/product-fixes.js
           ! grep -q 'assets/js/commerce-fixes.js' public/*.html
@@ -71,6 +72,8 @@ jobs:
             if [[ "$file" == *.gs ]]; then cp "$file" /tmp/pmt-syntax-check.js; node --check /tmp/pmt-syntax-check.js; else node --check "$file"; fi
           done
           echo "Static architecture smoke tests passed"
+      - name: Remediation regression tests
+        run: node tests/remediation-regression.js
       - name: Build Android APK
         shell: bash
         run: |
@@ -135,6 +138,23 @@ jobs:
           check_contains /admin/sw.js 'pmt-admin-shell-v11'
           check_contains /assets/js/customer-account.js 'PMTCustomer'
           echo "Production asset smoke tests passed"
+      - name: Verify source-to-production parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
+          headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
+          printf '%s\n' "$headers" | grep -qi '^x-pmt-worker-version: 7\.4-performance' || { echo 'Worker version header mismatch'; exit 1; }
+          printf '%s\n' "$headers" | grep -qi '^content-security-policy:' || { echo 'CSP header missing'; exit 1; }
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/index.html" -o /tmp/pmt-live-index.html
+          cmp -s public/index.html /tmp/pmt-live-index.html || { echo 'index.html parity mismatch'; exit 1; }
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/admin/sw.js" -o /tmp/pmt-live-sw.js
+          cmp -s public/admin/sw.js /tmp/pmt-live-sw.js || { echo 'admin service worker parity mismatch'; exit 1; }
+          curl --fail --silent --show-error --location --max-time 30 "$BASE/assets/js/customer-account.js" -o /tmp/pmt-live-customer.js
+          cmp -s public/assets/js/customer-account.js /tmp/pmt-live-customer.js || { echo 'customer account asset parity mismatch'; exit 1; }
+          status="$(curl --silent --show-error --location --max-time 30 -o /tmp/pmt-img.json -w '%{http_code}' "$BASE/img?src=https%3A%2F%2Fexample.com%2Fnot-an-image")"
+          test "$status" = "403" || { echo "Unexpected /img disallowed-host status: $status"; cat /tmp/pmt-img.json; exit 1; }
+          echo "Source-to-production parity and security-header checks passed"
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
