@@ -146,11 +146,13 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://piyare-mobile-telecom.sadab-notes-backup.workers.dev'
-          headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
+          health="$(curl --fail --silent --show-error --location --max-time 30 "$BASE/health")"
           expected_version="$(node -e "const fs=require('fs');const s=fs.readFileSync('worker.js','utf8');const m=s.match(/const\\s+PMT_VERSION\\s*=\\s*['\"]([^'\"]+)['\"]/);if(!m)process.exit(1);process.stdout.write(m[1])")"
-          printf '%s\n' "$headers" | grep -qi "^x-pmt-worker-version: $expected_version" || { echo "Worker version header mismatch; expected $expected_version"; exit 1; }
-          deployed_commit="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="x-pmt-source-commit"{print $2}' | tr -d '\r' | tail -n1)"
+          deployed_version="$(printf '%s' "$health" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);process.stdout.write(String(x.version||''));})")"
+          test "$deployed_version" = "$expected_version" || { echo "Worker version mismatch; expected $expected_version got $deployed_version"; exit 1; }
+          deployed_commit="$(printf '%s' "$health" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s);process.stdout.write(String(x.sourceCommit||''));})")"
           test "$deployed_commit" = "$EXPECTED_COMMIT" || { echo "Worker source commit mismatch; expected $EXPECTED_COMMIT got $deployed_commit"; exit 1; }
+          headers="$(curl --fail --silent --show-error --location --max-time 30 -D - -o /dev/null "$BASE/")"
           printf '%s\n' "$headers" | grep -qi '^content-security-policy:' || { echo 'CSP header missing'; exit 1; }
           curl --fail --silent --show-error --location --max-time 30 "$BASE/index.html" -o /tmp/pmt-live-index.html
           cmp -s public/index.html /tmp/pmt-live-index.html || { echo 'index.html parity mismatch'; exit 1; }
