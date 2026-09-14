@@ -12,7 +12,8 @@
     if(last&&t-last.ts<windowMs)return last.promise;
     const promise=Promise.resolve().then(()=>original(url,options));
     inflight.set(k,promise);recent.set(k,{ts:t,promise});
-    promise.finally(()=>{inflight.delete(k);setTimeout(()=>{const x=recent.get(k);if(x&&x.promise===promise)recent.delete(k)},windowMs)});
+    const cleanup=()=>{inflight.delete(k);setTimeout(()=>{const x=recent.get(k);if(x&&x.promise===promise)recent.delete(k)},windowMs)};
+    promise.then(cleanup,cleanup);
     return promise;
   };
   window.__PMT_REQUEST_GUARD__=true;
