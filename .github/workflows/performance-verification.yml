@@ -60,6 +60,12 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID secret is missing"; exit 1; }
+          if ! npx --yes wrangler@4 r2 bucket list --json | grep -q '"name"[[:space:]]*:[[:space:]]*"pmt-media"'; then
+            echo "pmt-media bucket missing; creating it"
+            npx --yes wrangler@4 r2 bucket create pmt-media --binding MY_BUCKET
+          else
+            echo "pmt-media bucket already exists"
+          fi
           npx --yes wrangler@4 deploy --config wrangler.jsonc --name pmt-pr-${{ github.event.pull_request.number || 'manual' }}
       - name: Browser smoke test PR preview
         env:
