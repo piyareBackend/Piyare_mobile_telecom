@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "piyare-mobile-telecom",
-  "main": "worker-entry.js",
+  "main": "worker-entry-r2-v2.js",
   "compatibility_date": "2026-08-20",
   "workers_dev": true,
   "keep_vars": true,
@@ -9,6 +9,12 @@
     "PMT_API_URL": "https://script.google.com/macros/s/AKfycbwstzcqUNbrxIV-4cxgmi_s7Yp-JYGO4ozHwwascfG4c3dr5mAsxQatD_6fpfxruu4/exec",
     "PMT_ALLOWED_ORIGINS": "https://piyare-mobile-telecom.sadab-notes-backup.workers.dev,https://pmt-admin-app.netlify.app,https://reliable-selkie-0c1672.netlify.app"
   },
+  "r2_buckets": [
+    {
+      "binding": "MY_BUCKET",
+      "bucket_name": "pmt-media"
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"

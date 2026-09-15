@@ -29,7 +29,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           set -euo pipefail
-          for file in public/assets/js/app.js public/assets/js/site-enhancer.js public/assets/js/banner.js public/assets/js/gallery.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js worker.js; do
+          for file in public/assets/js/app.js public/assets/js/site-enhancer.js public/assets/js/banner.js public/assets/js/gallery.js public/assets/js/cart.js public/assets/js/config.js public/assets/js/barcode-camera.js public/assets/js/billing-print.js public/assets/js/unified-billing-engine.js worker.js worker-entry-r2-v2.js public/assets/js/r2-upload.js public/assets/js/r2-image-manager.js; do
             node --check "$file"
             echo "syntax ok: $file"
           done
@@ -45,7 +45,10 @@ jobs:
           grep -q "'publicProducts','publicCoupons','track','content'" worker.js
           grep -q 'cacheTtl:20' worker.js
           grep -q 'API_UPSTREAM_TIMEOUT' worker.js
-          echo "performance wiring checks passed"
+          grep -q 'MAX_IMAGE_BYTES=250000' worker-entry-r2-v2.js
+          grep -q 'slice(0,6)' backend/ZZ_Phase2ImageManagement.gs
+          grep -q 'finalMedia.slice(0,6)' public/admin/product-editor-v2.html
+          echo "performance and image-management wiring checks passed"
       - name: Install Playwright
         run: |
           set -euo pipefail
