@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "piyare-mobile-telecom",
-  "main": "worker-entry-r2.js",
+  "main": "worker-entry-r2-v2.js",
   "compatibility_date": "2026-08-20",
   "workers_dev": true,
   "keep_vars": true,
